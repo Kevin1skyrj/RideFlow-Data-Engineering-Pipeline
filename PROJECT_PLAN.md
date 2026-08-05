@@ -395,7 +395,7 @@ Each choice below records the alternatives rejected and why. A choice without a 
 |---|---|---|
 | PyArrow | Parquet I/O | Reference implementation; zero-copy to DuckDB |
 | Pydantic | Schema validation | Declarative contracts, typed, clear failure messages |
-| Streamlit | Dashboard | Python-native, minimal front-end overhead, adequate for operational views |
+| ~~Streamlit~~ → **Power BI** | Dashboard | **Superseded — see `docs/architecture.md` §0 and §7.** Power BI is a materially stronger hiring signal and its model view validates the star schema. It weakens §6.7 reproducibility (Windows-only, binary `.pbix`) and puts §6.4 at risk (DAX can become business logic); both are mitigated by binding rules and a Parquet mart export. |
 | pytest | Testing | Standard; fixtures suit pipeline testing |
 | Ruff + Black | Lint & format | Fast, opinionated, ends style debate |
 | pre-commit | Local gates | Catches issues before CI |
@@ -490,7 +490,7 @@ Re-running any pipeline stage over any window must produce identical output. Thi
 | `warehouse/` | DuckDB connection management, schema bootstrap, read-only accessors | Transformation logic |
 | `sql/` | Ad-hoc analytical and reconciliation queries outside the dbt DAG | Pipeline-critical transformations |
 | `analytics/` | Metric definitions, exploratory analysis, validation notebooks | Anything the pipeline depends on |
-| `dashboard/` | Streamlit application, visual components, read-only queries | Transformation logic or writes |
+| `dashboard/` | Power BI report (`.pbix`) and `measures.md`, read-only queries against exported Parquet marts | Transformation logic, writes, or **any business logic in DAX** |
 | `data/raw/` | **Immutable landing zone.** Partitioned Parquet. Append-only. | Any mutation or deletion |
 | `data/processed/` | Intermediate artefacts, reconciliation outputs | Source-of-truth data |
 | `data/warehouse/` | DuckDB database file. Written only by dbt. | Any second writer |
@@ -549,7 +549,7 @@ Airflow in Compose; DAG for ingest-check → run → test → publish; retries, 
 **Exit:** DAG runs on schedule and recovers from transient failure; a 30-day backfill completes correctly with no manual intervention.
 
 ### M9 — Analytics & Dashboard
-Metric definitions; Streamlit dashboard for marketplace health, funnel, revenue, surge, and zone heatmap, with an explicit freshness indicator.
+Metric definitions; Parquet mart export; Power BI report covering marketplace health, funnel, revenue, surge, and zone heatmap, with an explicit freshness indicator sourced from the run marker.
 **Exit:** dashboard reflects live warehouse state and degrades honestly when data is stale.
 
 ### M10 — Hardening & Documentation
