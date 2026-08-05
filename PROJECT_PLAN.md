@@ -405,7 +405,7 @@ Each choice below records the alternatives rejected and why. A choice without a 
 
 Two constraints identified during environment assessment must be resolved before implementation:
 
-1. **Local interpreter is Python 3.13.5.** Airflow and dbt-core have historically lagged new Python releases. Airflow runs inside Docker with its own interpreter and is largely unaffected; the risk is concentrated in local `dbt-core` / `dbt-duckdb` installs. **Exact version compatibility must be verified against the package index at install time and pinned — not assumed.**
+1. ~~**Local interpreter is Python 3.13.5.**~~ ✅ **Resolved 2026-08-06.** The concern was that dbt lags new Python releases. Verified against the package index rather than assumed: dbt-core 1.12.0, dbt-duckdb 1.10.1, duckdb 1.5.5, confluent-kafka 2.15.0 and pyarrow 25.0.0 all resolve together on 3.13.5 with native cp313 wheels. Versions are pinned in `requirements.txt`. One near-conflict surfaced — dbt-core constrains `pathspec` below black's preference — and pip settles it at 1.0.4.
 2. **The system interpreter resides at a path containing spaces and an ampersand** (`...\AI & ML\python.exe`). `&` is a shell metacharacter and will break unquoted tooling on Windows. A project-local virtual environment is required rather than use of that interpreter directly.
 
 A third item — the Docker daemon not currently running — is an operational prerequisite rather than a design constraint.
@@ -648,13 +648,13 @@ Most portfolio projects prove that someone can make a pipeline run once. This on
 | A3 | Geographic zone granularity and count | Open — pending M1 |
 | A4 | Consumer batch size and flush interval | Open — to be tuned empirically in M4 |
 | A5 | Lookback window width for late arrivals | Open — must exceed maximum simulated lateness |
-| A6 | dbt-core / dbt-duckdb versions under Python 3.13 | **Blocking M0** — verify against package index; do not assume |
+| A6 | dbt-core / dbt-duckdb versions under Python 3.13 | ✅ **RESOLVED 2026-08-06.** Verified by combined `pip install --dry-run` on Python 3.13.5: dbt-core 1.12.0, dbt-duckdb 1.10.1, duckdb 1.5.5 resolve cleanly with native cp313 wheels. No 3.11/3.12 fallback needed. Pinned in `requirements.txt`. |
 
 ## Appendix B — Risk Register
 
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
-| Python 3.13 incompatibility with dbt or Airflow tooling | Blocks M0 | Medium | Verify at install; fall back to a 3.11/3.12 project-local environment |
+| ~~Python 3.13 incompatibility with dbt tooling~~ | ~~Blocks M0~~ | **Closed** | ✅ Verified resolvable on 3.13.5 (2026-08-06). Risk retired. |
 | Airflow resource consumption on a local machine | Slow iteration | Medium | Trim to essential services; scale down parallelism; consider a lighter local profile |
 | DuckDB lock contention despite the §4.1 design | Data unavailability | Low | Enforce single-writer via Airflow concurrency control; read-only serving connections |
 | Landing zone small-file proliferation | Query degradation | Medium | Size batches deliberately; add a compaction step if measured degradation appears |

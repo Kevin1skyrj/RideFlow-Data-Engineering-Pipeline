@@ -188,6 +188,7 @@ Airflow UI at `localhost:8080`, Kafka UI at `localhost:8081`.
 |---|---|
 | [`PROJECT_PLAN.md`](PROJECT_PLAN.md) | Objectives, requirements, milestones, non-objectives, risk register |
 | [`docs/architecture.md`](docs/architecture.md) | Technology rationale, component diagram, failure recovery, scaling |
+| [`docs/data_strategy.md`](docs/data_strategy.md) | Data provenance, TLC calibration approach, Bengaluru zones, honest limits |
 | [`docs/event_contract.md`](docs/event_contract.md) | **Frozen** — 9 event schemas, envelope, versioning, 20 invariants |
 | [`docs/reference_data.md`](docs/reference_data.md) | 10 lookup dimensions with allowed values |
 | [`docs/data_dictionary.md`](docs/data_dictionary.md) | Every warehouse column — type, rule, example, source, destination |
@@ -199,9 +200,15 @@ Airflow UI at `localhost:8080`, Kafka UI at `localhost:8081`.
 | [`LEARNING.md`](LEARNING.md) | Build journal — decisions, problems, resolutions |
 | [`INTERVIEW_NOTES.md`](INTERVIEW_NOTES.md) | Question bank derived from this project |
 
+### Data provenance
+
+**All RideFlow events are synthetic.** The generator's demand curves, distance distributions, and fare structures are **calibrated against NYC TLC public trip records** (real Uber/Lyft trips); cancellations, driver sessions, and anomalies are modelled from business rules, because no public dataset contains labelled bad data.
+
+**Honest limit:** calibration covers the car-based tiers only. `AUTO` and `BIKE` are hand-tuned — New York has no equivalent, and in Bengaluru those carry a large share of real demand. Full detail and the parameter-labelling scheme: [`docs/data_strategy.md`](docs/data_strategy.md).
+
 ### Sample data
 
-[`docs/samples/sample_events.json`](docs/samples/sample_events.json) — 30 events, 5 complete trip lifecycles, 3 driver sessions.
+[`docs/samples/sample_events.json`](docs/samples/sample_events.json) — 30 events, 5 complete trip lifecycles, 3 driver sessions. **Hand-authored** in M1 as a test fixture, because real data never contains edge cases labelled on demand.
 
 **Its invariants were verified programmatically, not assumed.** F1–F7 (fare decomposition, payout split, surge derivation), T1–T2 (temporal ordering), I2/I3 (key alignment), C1 (causation resolution), S4 (status exclusivity), and every stored duration checked against its own timestamps.
 
@@ -230,7 +237,7 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 Three items must be resolved before implementation begins. They were found by inspecting the actual environment, not assumed:
 
 1. **Docker daemon is not running.** Docker Desktop 28.4.0 and Compose v2.39.4 are installed, but the engine is not started. M3 onward cannot be tested until it is.
-2. **Local interpreter is Python 3.13.5.** Airflow and dbt-core have historically lagged new Python releases. Airflow runs on its own interpreter inside Docker; the risk is concentrated in local `dbt-core` / `dbt-duckdb` installs. **Versions must be verified against the package index at install time, not assumed.** Tracked as blocking item A6.
+2. ~~**Python 3.13 compatibility with dbt.**~~ ✅ **Resolved.** Verified against the package index, not assumed: dbt-core 1.12.0, dbt-duckdb 1.10.1, duckdb 1.5.5, confluent-kafka 2.15.0 and pyarrow 25.0.0 all resolve together on Python 3.13.5 with native cp313 wheels. Pinned in [`requirements.txt`](requirements.txt).
 3. **The system interpreter path contains a space and an ampersand** (`...\AI & ML\python.exe`). `&` is a shell metacharacter and breaks unquoted tooling on Windows. A project-local `.venv` is required.
 
 ### Known Design Gaps

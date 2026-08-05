@@ -1,0 +1,128 @@
+# RideFlow — Python dependencies
+#
+# Target interpreter: Python 3.13 (verified on 3.13.5, Windows, cp313 wheels)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# VERIFIED — these are not guessed versions.
+#
+# Every pin below was resolved together in a single `pip install --dry-run`
+# under Python 3.13.5 on 2026-08-06. The full set installs with no conflicts.
+#
+# This CLOSES blocking item A6 in PROJECT_PLAN.md Appendix A:
+#   dbt-core 1.12.0 and dbt-duckdb 1.10.1 DO support Python 3.13.
+#   The earlier concern that dbt lagged new Python releases does not apply
+#   at these versions. No 3.11/3.12 fallback environment is required.
+#
+# One near-conflict was found and resolved: dbt-core constrains `pathspec`
+# lower than black prefers. pip settles on pathspec 1.0.4, which satisfies
+# both. Installing dbt and the dev tooling in SEPARATE environments would
+# have hidden this; they are pinned together deliberately.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Install:
+#   python -m venv .venv
+#   source .venv/Scripts/activate      # Git Bash on Windows
+#   pip install -r requirements.txt
+#
+# NOTE: create the venv locally. Do NOT use the system interpreter directly —
+# it lives at "...\AI & ML\python.exe" and the ampersand is a shell
+# metacharacter that breaks unquoted tooling on Windows.
+
+
+# ─── Streaming transport ─────────────────────────────────────────────────────
+# Kafka producer/consumer. Chosen over kafka-python: librdkafka-backed, so it
+# is substantially faster and exposes the full config surface this project
+# needs — enable.idempotence, CooperativeSticky assignment, manual commits.
+confluent-kafka==2.15.0
+
+
+# ─── Landing zone & serialisation ────────────────────────────────────────────
+# Parquet read/write. Reference implementation; zero-copy handoff to DuckDB.
+pyarrow==25.0.0
+
+# Event contract validation against the JSON Schemas in docs/event_contract.md.
+jsonschema==4.26.0
+
+# Typed payload models for the consumer. Also arrives transitively via dbt,
+# but pinned explicitly because ingestion/ imports it directly — a transitive
+# dependency that code depends on should always be declared.
+pydantic==2.13.4
+
+
+# ─── Warehouse & transformation ──────────────────────────────────────────────
+duckdb==1.5.5
+dbt-core==1.12.0
+dbt-duckdb==1.10.1
+
+
+# ─── Event generation ────────────────────────────────────────────────────────
+# Synthetic identities and locales. Supports seeding, which the determinism
+# requirement in testing_strategy.md §2.1 depends on.
+Faker==40.36.0
+
+# Demand curves, surge coupling, statistical distributions.
+numpy==2.5.1
+
+# Reference-data prep and calibration analysis. NOT used in the hot ingestion
+# path — see etl_design.md; transformation belongs in dbt, not pandas.
+pandas==3.0.5
+
+
+# ─── Runtime support ─────────────────────────────────────────────────────────
+# .env loading. Credentials never live in code (PROJECT_PLAN.md §6.5).
+python-dotenv==1.2.2
+
+# Structured JSON logging with correlation IDs (PROJECT_PLAN.md §6.4).
+structlog==26.1.0
+
+# Retry with exponential backoff for the producer and consumer.
+# Airflow handles task-level retries; this covers in-process ones.
+tenacity==9.1.4
+
+# HTTP client for the reference-data / calibration download scripts.
+requests==2.34.2
+
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
+pytest==9.1.1
+pytest-cov==7.1.0
+
+# Property-based testing for fare arithmetic. Required by
+# testing_strategy.md §2.4 — randomised inputs asserting invariants F1-F7
+# catch the rounding cases hand-written examples never cover.
+hypothesis==6.165.1
+
+
+# ─── Code quality ────────────────────────────────────────────────────────────
+ruff==0.16.1
+black==26.5.1
+pre-commit==4.6.1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DELIBERATELY NOT HERE
+#
+# apache-airflow
+#   Runs inside Docker with its own constraints file (airflow_design.md §7).
+#   Installing it here would fight these pins hard — Airflow constrains dozens
+#   of shared transitive dependencies. Containerising it is precisely what
+#   avoids that (architecture.md §8).
+#
+# Power BI
+#   Not a Python package. Reads the Parquet mart export from data/processed/.
+#
+# streamlit
+#   Superseded by Power BI (architecture.md §0).
+#
+# pyspark
+#   Distributed-compute overhead with no benefit at this data volume.
+#   Revisit only if the measured bottleneck justifies it (architecture.md §12).
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ON LOCKING
+# These are direct dependencies only. Transitive versions are left to the
+# resolver, so this is not a true lockfile — two installs weeks apart can
+# differ. Before M10 ("reproducible from a clean clone"), generate a real
+# lock with `pip-compile` (pip-tools) or `uv pip compile` and commit the
+# resulting requirements.lock. Pinning direct deps is enough for development;
+# it is not enough to call the build reproducible.
