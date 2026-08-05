@@ -1,0 +1,8 @@
+driver_status_id,driver_status_code,display_name,description,is_available_for_dispatch,is_online,counts_toward_utilisation,is_earning,sort_order
+-1,UNKNOWN,Unknown,Unresolved driver status,false,false,false,false,99
+1,AVAILABLE,Available,Online and eligible to receive dispatch offers,true,true,true,false,10
+2,EN_ROUTE,En Route to Pickup,Assigned to a trip and travelling to the pickup point,false,true,true,false,20
+3,ON_TRIP,On Trip,Carrying a rider to the destination,false,true,true,true,30
+4,BREAK,On Break,Online but temporarily not accepting trips,false,true,false,false,40
+5,OFFLINE,Offline,Not on duty,false,false,false,false,50
+6,SUSPENDED,Suspended,Blocked from the platform,false,false,false,false,60

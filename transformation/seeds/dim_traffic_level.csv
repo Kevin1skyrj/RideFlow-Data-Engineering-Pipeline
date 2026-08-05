@@ -1,0 +1,7 @@
+traffic_level_id,traffic_level_code,display_name,description,severity_rank,speed_factor,eta_multiplier,avg_speed_kmh,is_congested
+-1,UNKNOWN,Unknown,Unresolved traffic condition,0,1.00,1.00,0.00,false
+1,FREE_FLOW,Free Flowing,Unobstructed traffic at design speed,1,1.00,1.00,32.00,false
+2,LIGHT,Light Traffic,Minor slowdowns at junctions,2,0.85,1.15,27.00,false
+3,MODERATE,Moderate Traffic,Noticeable congestion on main corridors,3,0.65,1.50,21.00,true
+4,HEAVY,Heavy Traffic,Sustained congestion with long signal waits,4,0.45,2.10,14.00,true
+5,GRIDLOCK,Gridlock,Near standstill on major routes,5,0.25,3.60,8.00,true

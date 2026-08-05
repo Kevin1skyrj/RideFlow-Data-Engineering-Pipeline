@@ -56,9 +56,13 @@ dbt-duckdb==1.10.1
 
 
 # ─── Event generation ────────────────────────────────────────────────────────
-# Synthetic identities and locales. Supports seeding, which the determinism
-# requirement in testing_strategy.md §2.1 depends on.
-Faker==40.36.0
+# NOTE: Faker==40.36.0 was pinned here and has been REMOVED after M2.
+# The no-PII design (PROJECT_PLAN.md §6.5) means identities are opaque UUIDs,
+# so there are no names or addresses to fake - it was a dependency the project
+# never actually imported. Verified with a grep before removal.
+#
+# UUIDs come from the seeded RNG rather than uuid.uuid4(), which draws from
+# os.urandom and cannot be seeded. See calibration.Sampler.uuid.
 
 # Demand curves, surge coupling, statistical distributions.
 numpy==2.5.1

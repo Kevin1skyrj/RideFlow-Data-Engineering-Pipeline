@@ -1,0 +1,8 @@
+vehicle_type_id,vehicle_type_code,display_name,description,seat_capacity,base_fare_multiplier,per_km_multiplier,is_shared,is_premium,requires_commercial_license,min_driver_rating,sort_order,is_active
+-1,UNKNOWN,Unknown,Unresolved vehicle type,0,1.00,1.00,false,false,false,1.00,99,false
+1,ECONOMY,RideFlow Go,Standard hatchback or sedan for up to 4 riders,4,1.00,1.00,false,false,true,4.00,10,true
+2,PREMIUM,RideFlow Premier,Premium sedan with top-rated drivers,4,1.60,1.55,false,true,true,4.60,20,true
+3,XL,RideFlow XL,SUV or MPV seating up to 6 riders,6,1.85,1.70,false,false,true,4.30,30,true
+4,POOL,RideFlow Pool,Shared ride with co-passengers along the route,4,0.70,0.65,true,false,true,4.20,40,true
+5,AUTO,RideFlow Auto,Three-wheeler auto-rickshaw for short trips,3,0.55,0.50,false,false,true,4.00,50,true
+6,BIKE,RideFlow Bike,Two-wheeler for single riders in heavy traffic,1,0.35,0.32,false,false,false,4.00,60,true

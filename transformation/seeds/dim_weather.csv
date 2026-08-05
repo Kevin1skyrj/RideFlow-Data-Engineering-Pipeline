@@ -1,0 +1,9 @@
+weather_id,weather_code,display_name,description,severity_level,demand_impact_factor,supply_impact_factor,avg_speed_reduction_pct,is_adverse,triggers_safety_protocol
+-1,UNKNOWN,Unknown,Unresolved weather condition,0,1.00,1.00,0.00,false,false
+1,CLEAR,Clear,Clear skies with good visibility,0,1.00,1.00,0.00,false,false
+2,CLOUDY,Cloudy,Overcast but dry,0,1.02,1.00,0.00,false,false
+3,RAIN_LIGHT,Light Rain,Light rainfall with minor disruption,1,1.25,0.92,8.00,true,false
+4,RAIN_HEAVY,Heavy Rain,Heavy rainfall causing waterlogging,2,1.60,0.75,22.00,true,true
+5,THUNDERSTORM,Thunderstorm,Severe storm suppressing overall travel,3,1.45,0.55,30.00,true,true
+6,FOG,Fog,Low visibility conditions,2,1.10,0.85,25.00,true,true
+7,EXTREME_HEAT,Extreme Heat,High temperature reducing walking trips,2,1.30,0.88,3.00,true,false

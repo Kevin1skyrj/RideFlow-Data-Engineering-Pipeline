@@ -1,0 +1,6 @@
+customer_tier_id,customer_tier_code,display_name,min_lifetime_trips,min_lifetime_spend,discount_pct,has_priority_matching,max_free_cancellations_monthly,has_premium_support,tier_rank,is_active
+-1,UNKNOWN,Unknown,0,0.00,0.00,false,0,false,0,false
+1,BASIC,Basic,0,0.00,0.00,false,1,false,1,true
+2,SILVER,Silver,25,7500.00,2.50,false,2,false,2,true
+3,GOLD,Gold,100,35000.00,5.00,true,4,true,3,true
+4,PLATINUM,Platinum,300,120000.00,8.00,true,8,true,4,true

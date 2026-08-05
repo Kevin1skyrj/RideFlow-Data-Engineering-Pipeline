@@ -1,0 +1,17 @@
+cancellation_reason_id,cancellation_reason_code,display_name,description,cancelled_by_party,reason_category,is_fee_applicable,is_driver_fault,is_rider_fault,is_platform_fault,affects_acceptance_rate,sort_order
+-1,UNKNOWN,Unknown,Unresolved cancellation reason,SYSTEM,OPERATIONAL,false,false,false,false,false,99
+1,RIDER_CHANGED_MIND,Rider Changed Mind,Rider no longer needs the ride,RIDER,DEMAND,true,false,true,false,false,10
+2,DRIVER_ETA_TOO_LONG,Driver ETA Too Long,Rider cancelled because the wait was too long,RIDER,SUPPLY,true,false,false,false,false,20
+3,RIDER_FOUND_ALTERNATIVE,Found Alternative Transport,Rider used another mode of transport,RIDER,DEMAND,true,false,true,false,false,30
+4,WRONG_PICKUP_LOCATION,Wrong Pickup Location,Pickup point was set incorrectly,RIDER,OPERATIONAL,false,false,true,false,false,40
+5,RIDER_UNRESPONSIVE,Rider Unresponsive,Rider did not respond or show up at pickup,DRIVER,DEMAND,true,false,true,false,false,50
+6,PRICE_TOO_HIGH,Price Too High,Rider rejected the quoted fare,RIDER,DEMAND,false,false,false,false,false,60
+7,DRIVER_VEHICLE_ISSUE,Vehicle Issue,Driver vehicle became unavailable,DRIVER,SUPPLY,false,true,false,false,true,70
+8,DRIVER_TOO_FAR,Driver Too Far,Driver was too far from the pickup point,DRIVER,SUPPLY,false,true,false,false,true,80
+9,DRIVER_EMERGENCY,Driver Emergency,Driver had a personal or medical emergency,DRIVER,SAFETY,false,false,false,false,false,90
+10,DRIVER_DECLINED_DESTINATION,Declined Destination,Driver refused the trip destination,DRIVER,SUPPLY,false,true,false,false,true,100
+11,NO_DRIVER_AVAILABLE,No Driver Available,No driver could be matched to the request,SYSTEM,SUPPLY,false,false,false,true,false,110
+12,PAYMENT_METHOD_INVALID,Invalid Payment Method,Rider payment method failed validation,SYSTEM,TECHNICAL,false,false,true,false,false,120
+13,SAFETY_CONCERN,Safety Concern,Trip terminated for trust and safety reasons,SYSTEM,SAFETY,false,false,false,false,false,130
+14,DUPLICATE_REQUEST,Duplicate Request,Request was a duplicate of an active trip,SYSTEM,TECHNICAL,false,false,false,true,false,140
+15,SYSTEM_ERROR,System Error,Platform failure prevented the trip,SYSTEM,TECHNICAL,false,false,false,true,false,150

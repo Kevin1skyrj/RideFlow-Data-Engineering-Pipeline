@@ -1,0 +1,28 @@
+zone_id,zone_code,zone_name,city_id,zone_type,centroid_lat,centroid_lon,is_airport_zone,is_surge_eligible,avg_daily_demand,geocode_source,is_active
+-1,UNKNOWN,Unknown Zone,1,UNKNOWN,0.0,0.0,false,false,0,n/a,false
+87,BLR_MG_ROAD,MG Road,1,CBD,12.975526,77.60679,false,true,1450,nominatim/osm,true
+91,BLR_SHIVAJINAGAR,Shivajinagar,1,CBD,12.985529,77.60545,false,true,1120,nominatim/osm,true
+95,BLR_CUBBON,Cubbon Park,1,CBD,12.974253,77.592191,false,true,780,nominatim/osm,true
+99,BLR_MAJESTIC,Majestic,1,TRANSIT_HUB,12.978185,77.572185,false,true,1980,nominatim/osm,true
+104,BLR_KSR_STN,KSR City Railway Station,1,TRANSIT_HUB,12.978174,77.56956,false,true,1640,nominatim/osm,true
+118,BLR_INDIRANAGAR,Indiranagar,1,RESIDENTIAL,12.973291,77.640467,false,true,1720,nominatim/osm,true
+124,BLR_ULSOOR,Ulsoor,1,RESIDENTIAL,12.977879,77.62467,false,true,860,nominatim/osm,true
+131,BLR_MALLESHWARAM,Malleshwaram,1,RESIDENTIAL,13.002735,77.570325,false,true,940,nominatim/osm,true
+137,BLR_RAJAJINAGAR,Rajajinagar,1,RESIDENTIAL,13.000536,77.5497,false,true,810,nominatim/osm,true
+142,BLR_RT_NAGAR,RT Nagar,1,RESIDENTIAL,13.02272,77.595715,false,true,720,nominatim/osm,true
+205,BLR_KORAMANGALA,Koramangala,1,COMMERCIAL,12.935737,77.624081,false,true,2240,nominatim/osm,true
+212,BLR_BTM,BTM Layout,1,RESIDENTIAL,12.914001,77.610282,false,true,1380,nominatim/osm,true
+219,BLR_JAYANAGAR,Jayanagar,1,RESIDENTIAL,12.929273,77.582423,false,true,1090,nominatim/osm,true
+226,BLR_JP_NAGAR,JP Nagar,1,RESIDENTIAL,12.909694,77.586607,false,true,960,nominatim/osm,true
+233,BLR_BANASHANKARI,Banashankari,1,RESIDENTIAL,12.92782,77.556621,false,true,880,nominatim/osm,true
+240,BLR_BASAVANAGUDI,Basavanagudi,1,RESIDENTIAL,12.941726,77.575502,false,true,690,nominatim/osm,true
+260,BLR_HSR,HSR Layout,1,RESIDENTIAL,12.911623,77.638862,false,true,1560,nominatim/osm,true
+318,BLR_MARATHAHALLI,Marathahalli,1,COMMERCIAL,12.955257,77.698416,false,true,1830,nominatim/osm,true
+324,BLR_BELLANDUR,Bellandur,1,COMMERCIAL,12.932049,77.684292,false,true,1670,nominatim/osm,true
+331,BLR_WHITEFIELD,Whitefield,1,COMMERCIAL,12.995743,77.757949,false,true,2010,nominatim/osm,true
+338,BLR_SARJAPUR,Sarjapur Road,1,COMMERCIAL,12.924341,77.644878,false,true,1240,nominatim/osm,true
+412,BLR_KIA_T1,Kempegowda Intl - Terminal 1,1,AIRPORT,13.197605,77.707486,true,true,1890,nominatim/osm,true
+415,BLR_KIA_T2,Kempegowda Intl - Terminal 2,1,AIRPORT,13.197605,77.707486,true,true,1240,nominatim/osm (T1 campus),true
+421,BLR_HEBBAL,Hebbal,1,SUBURBAN,13.038218,77.5919,false,true,1150,nominatim/osm,true
+434,BLR_MANYATA,Manyata Tech Park,1,COMMERCIAL,13.048289,77.6211,false,true,1420,nominatim/osm,true
+512,BLR_ELECTRONIC_CITY,Electronic City,1,COMMERCIAL,12.84876,77.648253,false,true,1760,nominatim/osm,true

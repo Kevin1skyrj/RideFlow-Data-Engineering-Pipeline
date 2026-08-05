@@ -1,0 +1,8 @@
+city_id,city_code,city_name,country_code,region,timezone,currency_code,center_lat,center_lon,bounding_box_wkt,commission_pct,base_fare,per_km_rate,per_min_rate,airport_fee,tax_pct,max_surge_multiplier,launch_date,geocode_source,is_active
+-1,UNKNOWN,Unknown City,XX,UNKNOWN,UTC,XXX,0.0,0.0,"POLYGON((0 0, 0 0, 0 0, 0 0, 0 0))",0.0,0.0,0.0,0.0,0.0,0.0,1.0,1970-01-01,n/a,false
+1,BLR,Bengaluru,IN,South,Asia/Kolkata,INR,12.976794,77.590082,"POLYGON((77.3101 12.6968, 77.8701 12.6968, 77.8701 13.2568, 77.3101 13.2568, 77.3101 12.6968))",20.00,60.00,18.00,2.00,150.00,5.00,4.00,2021-03-15,nominatim/osm,true
+2,DEL,Delhi NCR,IN,North,Asia/Kolkata,INR,28.613895,77.209006,"POLYGON((76.759 28.1639, 77.659 28.1639, 77.659 29.0639, 76.759 29.0639, 76.759 28.1639))",20.00,55.00,17.00,2.00,200.00,5.00,4.00,2021-06-01,nominatim/osm,true
+3,BOM,Mumbai,IN,West,Asia/Kolkata,INR,19.054999,72.869203,"POLYGON((72.5492 18.735, 73.1892 18.735, 73.1892 19.375, 72.5492 19.375, 72.5492 18.735))",22.00,65.00,19.50,2.20,175.00,5.00,3.50,2021-09-20,nominatim/osm,true
+4,HYD,Hyderabad,IN,South,Asia/Kolkata,INR,17.360589,78.474061,"POLYGON((78.1741 17.0606, 78.7741 17.0606, 78.7741 17.6606, 78.1741 17.6606, 78.1741 17.0606))",20.00,55.00,16.50,1.80,140.00,5.00,4.00,2022-02-14,nominatim/osm,true
+5,MAA,Chennai,IN,South,Asia/Kolkata,INR,13.083694,80.270186,"POLYGON((79.9902 12.8037, 80.5502 12.8037, 80.5502 13.3637, 79.9902 13.3637, 79.9902 12.8037))",20.00,55.00,16.00,1.80,130.00,5.00,4.00,2022-07-11,nominatim/osm,true
+6,PNQ,Pune,IN,West,Asia/Kolkata,INR,18.521374,73.854507,"POLYGON((73.6045 18.2714, 74.1045 18.2714, 74.1045 18.7714, 73.6045 18.7714, 73.6045 18.2714))",20.00,52.00,15.50,1.70,120.00,5.00,4.00,2023-01-09,nominatim/osm,true

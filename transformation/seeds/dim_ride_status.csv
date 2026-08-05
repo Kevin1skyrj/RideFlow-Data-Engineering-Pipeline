@@ -1,0 +1,12 @@
+ride_status_id,ride_status_code,display_name,description,is_terminal,is_revenue_generating,is_successful,funnel_stage,source_event_type,sort_order
+-1,UNKNOWN,Unknown,Unresolved ride status,false,false,false,0,,99
+1,REQUESTED,Requested,Rider has requested a ride; no driver assigned yet,false,false,false,1,RideRequested,10
+2,MATCHED,Matched,A driver has accepted the request,false,false,false,2,RideAccepted,20
+3,DRIVER_ARRIVED,Driver Arrived,Driver has reached the pickup point,false,false,false,3,DriverArrived,30
+4,STARTED,In Progress,Trip is underway with the rider on board,false,false,false,4,RideStarted,40
+5,COMPLETED,Completed,Trip finished at the destination; fare is due,false,true,true,5,RideCompleted,50
+6,PAID,Paid,Payment settled successfully,true,true,true,6,PaymentCompleted,60
+7,CANCELLED_RIDER,Cancelled by Rider,Rider terminated the trip before completion,true,false,false,99,RideCancelled,70
+8,CANCELLED_DRIVER,Cancelled by Driver,Driver terminated the trip before completion,true,false,false,99,RideCancelled,80
+9,CANCELLED_SYSTEM,Cancelled by System,Platform terminated the trip before completion,true,false,false,99,RideCancelled,90
+10,EXPIRED,Expired,No driver accepted within the timeout - DERIVED not observed,true,false,false,99,,95

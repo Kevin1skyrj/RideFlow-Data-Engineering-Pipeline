@@ -1,0 +1,74 @@
+# ── Data ─────────────────────────────────────────────────────────────────────
+# data/ is never committed (PROJECT_PLAN.md section 9, invariant 1).
+# The landing zone is regenerable and would otherwise dominate repo size.
+data/
+
+# Raw calibration source (multi-GB NYC TLC parquet). Only the derived
+# calibration_params.json is committed - see docs/data_strategy.md section 2.
+analytics/calibration/tlc_raw/
+*.parquet
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Testing & coverage ───────────────────────────────────────────────────────
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.ruff_cache/
+.mypy_cache/
+
+# ── dbt ──────────────────────────────────────────────────────────────────────
+transformation/target/
+transformation/dbt_packages/
+transformation/logs/
+.user.yml
+
+# ── Airflow ──────────────────────────────────────────────────────────────────
+docker/airflow/logs/
+airflow.db
+airflow.cfg
+webserver_config.py
+standalone_admin_password.txt
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# .env holds credentials and is never committed. .env.example documents the
+# required variables (PROJECT_PLAN.md section 6.5).
+.env
+.env.local
+*.pem
+*.key
+
+# ── Power BI ─────────────────────────────────────────────────────────────────
+# .pbix is a binary blob with no meaningful diff. Committed deliberately when
+# published, but temp/recovery files never are (architecture.md section 0).
+*.pbix.tmp
+~$*.pbix
+
+# ── OS & editors ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

@@ -1,0 +1,10 @@
+payment_status_id,payment_status_code,display_name,description,is_terminal,is_successful,is_revenue_recognised,requires_action,sort_order
+-1,UNKNOWN,Unknown,Unresolved payment status,false,false,false,true,99
+1,PENDING,Pending,Payment initiated but not yet authorised,false,false,false,false,10
+2,AUTHORIZED,Authorized,Funds held but not captured,false,false,false,false,20
+3,SUCCEEDED,Succeeded,Funds collected successfully,true,true,true,false,30
+4,FAILED,Failed,Payment attempt failed terminally,true,false,false,true,40
+5,REFUNDED,Refunded,Full amount returned to the rider,true,false,false,false,50
+6,PARTIALLY_REFUNDED,Partially Refunded,Part of the amount returned to the rider,true,false,true,false,60
+7,CHARGEBACK,Chargeback,Funds reversed by the issuing bank,true,false,false,true,70
+8,DISPUTED,Disputed,Rider has raised a dispute; not yet resolved,false,false,true,true,80

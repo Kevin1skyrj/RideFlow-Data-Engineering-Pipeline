@@ -238,6 +238,71 @@ Resolve the BI-tool choice **before** writing `PROJECT_PLAN.md` §7.8. Changing 
 
 ---
 
+## 2026-08-06 — M2 — Event generator
+
+**Time spent:** ~6h
+
+### What I learned
+
+- **A simulation can be individually correct and collectively wrong.** Every trip the generator produced was contract-valid, every fare invariant held, all 72 tests passed — and the marketplace was still nonsense, because the *aggregate* was undersupplied. Unit correctness does not imply system realism. Only measuring the emergent statistics exposed it.
+
+- **Surge must compare like with like.** I originally divided a 10-minute request *count* by a *stock* of online drivers. That is a flow over a stock — dimensionally meaningless, and the resulting ratio never crossed any threshold, so surge sat permanently at 1.0. The fix was to convert both sides to per-hour rates: demand rate vs. driver capacity rate (drivers × ~1.9 trips/hour).
+
+- **A parameter that scales with the wrong quantity silently destroys a signal.** My zone-mobility term added 15% of the *city-wide* fleet to each zone's supply. So doubling the fleet doubled every zone's apparent supply, and localised scarcity — the only thing that actually produces surge — was averaged away. Making it a multiplier on *local* supply fixed it. The lesson generalises: check what each term scales with, not just its magnitude.
+
+- **Don't surge on small numbers.** Once surge worked, 3 a.m. showed 1.18×: a zone with one request and two idle drivers computed a ratio above threshold. Real platforms don't raise prices because one person opened the app. A minimum-demand floor is not a hack; it's part of the model.
+
+- **Fleet sizing is a rate problem, not a headcount problem.** Sizing drivers from instantaneous demand worked for a 1-hour window and collapsed to 16% completion over 24 hours, because sessions end and no new ones start. Session count has to scale with `window / average_session_length`.
+
+- **`uuid.uuid4()` cannot be seeded.** It draws from `os.urandom`. Using it anywhere would have silently broken byte-identical reproducibility while every other value matched. Deriving UUIDs from the seeded RNG is the fix, and there is now a test specifically for it.
+
+- **Round components before summing, never the total independently.** Rounding each fare component to 2dp and deriving the taxable subtotal as the sum of those rounded values makes invariant F1 hold *exactly*, not within tolerance. Rounding the total separately from its parts is what produces the classic one-paisa drift.
+
+- **Docs can be executable.** Rather than copying the JSON Schemas out of `event_contract.md` into `.json` files, the test suite parses the fenced blocks out of the markdown at runtime. There is exactly one copy of each schema, so doc/code drift is not merely detected — it is impossible.
+
+### Problems faced
+
+| Problem | Root cause | Resolution | Time lost |
+|---|---|---|---|
+| Completion rate 46% (should be ~85%) | 17% of driver sessions ended before the window opened | Extend shifts that would expire pre-window | 40 min |
+| Completion collapsed to 16.6% at 24h | Fleet sized for instantaneous demand; no shift churn | Scale session count by `window / avg_session` | 30 min |
+| Surge permanently 1.0 | Flow ÷ stock, plus city-wide mobility term | Rate ÷ rate; mobility as a multiple of local supply | 50 min |
+| Surge on 92% of trips, 1.18× at 3 a.m. | No floor on demand or supply counts | `MIN_DEMAND_FOR_SURGE`, `MIN_EFFECTIVE_SUPPLY`, threshold 0.72 | 25 min |
+| Faker pinned but never imported | Assumed a name generator would be needed | Removed — the no-PII design means identities are opaque UUIDs | 5 min |
+
+### The bug worth remembering
+
+The surge model was wrong **three times in a row**, each fix revealing the next error:
+
+1. Flow ÷ stock → surge never fires.
+2. Fixed the units, but the city-wide mobility term erased local imbalance → still never fires.
+3. Fixed mobility, but no small-number floor → surge fires *everywhere*, including 3 a.m.
+
+None of these were caught by unit tests, because each individual function did exactly what it said. They were caught by plotting average surge by local hour and asking "does this look like a real city?" **Aggregate plausibility checks are a distinct category of test, and data projects need them.** That is now `test_surge_and_demand.py`.
+
+### Decisions made
+
+| Decision | Alternatives considered | Why this one | Reversible? |
+|---|---|---|---|
+| Schemas parsed from the contract markdown | Duplicate them as `.json` files | One copy means drift is impossible, not just detectable | Easy |
+| Distance from real geocoded centroids | Sample from a distribution | Uses the real OSM coordinates; distances reflect actual Bengaluru geography | Medium |
+| Surge as a separate pass over aggregate demand | Compute per trip | Surge is a property of zone-level imbalance; per-trip makes it a function of nothing | Hard |
+| Anomalies mutate a known-good chain | Generate bad data inline | A malformed event is always deliberate, never a business-logic bug | Easy |
+| Anomaly tags kept off the wire | Serialise them | Tags are for tests; a real consumer must not be told which events are bad | Easy |
+| Nominatim geocoding for zones | Hand-typed coordinates | Real places deserve real coordinates; also catches out-of-bounds errors | Easy |
+
+### What I'd do differently
+
+Plot the aggregate statistics *before* writing the unit tests. I wrote 72 passing tests against a marketplace that was economically nonsense. A single hour-by-hour histogram would have caught all three surge bugs in the first ten minutes.
+
+### Open questions
+
+- TLC calibration is still pending — every parameter is currently `hand_tuned`. The provenance test enforces honest labelling, so this cannot be misrepresented, but the "calibrated" claim is not yet earned.
+- `ZONE_MOBILITY = 0.35` and `TRIPS_PER_DRIVER_HOUR = 1.9` are estimates. Both should be re-derived from real data.
+- Morning peak surges less than evening (1.07 vs 1.27). Plausible — shift starts cluster at 05:00–07:00, so mornings are better supplied — but unverified against reality.
+
+---
+
 ## Running list of things I got wrong
 
 Kept deliberately. **"Tell me about a mistake you made"** is a standard interview question, and a specific answer with a concrete fix beats a vague one every time.

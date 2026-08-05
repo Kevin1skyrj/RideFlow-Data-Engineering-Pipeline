@@ -1,0 +1,8 @@
+payment_method_id,payment_method_code,display_name,method_category,is_cash,is_prepaid,requires_gateway,settlement_delay_hours,gateway_fee_pct,supports_tip,supports_refund,failure_rate_baseline_pct,is_active
+-1,UNKNOWN,Unknown,UNKNOWN,false,false,false,0,0.00,false,false,0.00,false
+1,CASH,Cash,CASH,true,false,false,0,0.00,false,false,0.00,true
+2,CARD,Credit / Debit Card,CARD,false,false,true,48,2.00,true,true,2.80,true
+3,UPI,UPI,DIGITAL,false,false,true,24,0.30,true,true,0.90,true
+4,WALLET,RideFlow Wallet,DIGITAL,false,true,false,0,0.00,true,true,0.40,true
+5,CORPORATE,Corporate Account,ACCOUNT,false,false,false,720,0.00,false,true,0.20,true
+6,NETBANKING,Net Banking,DIGITAL,false,false,true,48,1.20,true,true,3.40,true

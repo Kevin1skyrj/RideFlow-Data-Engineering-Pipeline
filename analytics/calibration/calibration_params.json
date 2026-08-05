@@ -1,0 +1,211 @@
+{
+  "$schema_version": "1.0.0",
+  "generated_at": "2026-08-06T00:00:00Z",
+  "city_code": "BLR",
+  "_README": [
+    "Every parameter carries a `source` field: 'tlc_calibrated' or 'hand_tuned'.",
+    "See docs/data_strategy.md section 3.3 - AUTO and BIKE tiers have NO NYC analogue,",
+    "so they can never be tlc_calibrated. Absolute INR rates are never taken from TLC.",
+    "Run `python -m analytics.calibration.extract_tlc` to re-derive the",
+    "tlc_calibrated blocks from real NYC TLC HVFHV trip records."
+  ],
+
+  "hourly_demand_weekday": {
+    "source": "hand_tuned",
+    "note": "Bimodal commute peaks. Replace with TLC-derived curve via extract_tlc.",
+    "unit": "relative multiplier, index 0 = 00:00 local",
+    "values": [
+      0.22, 0.14, 0.09, 0.07, 0.09, 0.18,
+      0.42, 0.78, 1.35, 1.48, 1.12, 0.88,
+      0.82, 0.79, 0.76, 0.84, 1.04, 1.42,
+      1.61, 1.38, 1.05, 0.82, 0.61, 0.38
+    ]
+  },
+
+  "hourly_demand_weekend": {
+    "source": "hand_tuned",
+    "note": "Flatter morning, heavier late night.",
+    "unit": "relative multiplier, index 0 = 00:00 local",
+    "values": [
+      0.58, 0.44, 0.31, 0.18, 0.12, 0.14,
+      0.24, 0.38, 0.58, 0.79, 0.94, 1.06,
+      1.11, 1.08, 1.02, 1.06, 1.18, 1.32,
+      1.44, 1.51, 1.38, 1.16, 0.94, 0.74
+    ]
+  },
+
+  "trip_distance_km": {
+    "source": "hand_tuned",
+    "note": "Log-normal. TLC calibration applies to car tiers only.",
+    "distribution": "lognormal",
+    "by_vehicle_type": {
+      "ECONOMY":  { "mu": 1.52, "sigma": 0.62, "min": 0.8, "max": 45.0, "source": "hand_tuned" },
+      "PREMIUM":  { "mu": 1.78, "sigma": 0.68, "min": 1.5, "max": 60.0, "source": "hand_tuned" },
+      "XL":       { "mu": 1.71, "sigma": 0.64, "min": 1.5, "max": 55.0, "source": "hand_tuned" },
+      "POOL":     { "mu": 1.44, "sigma": 0.55, "min": 1.0, "max": 30.0, "source": "hand_tuned" },
+      "AUTO":     { "mu": 1.05, "sigma": 0.52, "min": 0.5, "max": 18.0, "source": "hand_tuned" },
+      "BIKE":     { "mu": 0.88, "sigma": 0.48, "min": 0.4, "max": 14.0, "source": "hand_tuned" }
+    }
+  },
+
+  "vehicle_type_mix": {
+    "source": "hand_tuned",
+    "note": "Bengaluru mix. AUTO and BIKE carry large real share and have no NYC analogue.",
+    "weights": {
+      "ECONOMY": 0.34,
+      "AUTO": 0.24,
+      "BIKE": 0.16,
+      "PREMIUM": 0.11,
+      "POOL": 0.09,
+      "XL": 0.06
+    }
+  },
+
+  "speed_kmh_by_traffic": {
+    "source": "hand_tuned",
+    "note": "Bengaluru speeds. NYC speeds do NOT transfer - see data_strategy.md 3.2.",
+    "values": {
+      "FREE_FLOW": 32.0,
+      "LIGHT": 27.0,
+      "MODERATE": 21.0,
+      "HEAVY": 14.0,
+      "GRIDLOCK": 8.0
+    }
+  },
+
+  "traffic_by_hour": {
+    "source": "hand_tuned",
+    "note": "Probability weights over traffic levels, indexed by local hour.",
+    "levels": ["FREE_FLOW", "LIGHT", "MODERATE", "HEAVY", "GRIDLOCK"],
+    "peak_hours": [8, 9, 18, 19, 20],
+    "shoulder_hours": [7, 10, 11, 17, 21],
+    "weights_peak":     [0.02, 0.08, 0.24, 0.46, 0.20],
+    "weights_shoulder": [0.08, 0.22, 0.38, 0.26, 0.06],
+    "weights_offpeak":  [0.34, 0.36, 0.22, 0.07, 0.01]
+  },
+
+  "weather_distribution": {
+    "source": "hand_tuned",
+    "note": "Annual-average Bengaluru mix. Monsoon has no NYC analogue.",
+    "weights": {
+      "CLEAR": 0.52,
+      "CLOUDY": 0.24,
+      "RAIN_LIGHT": 0.13,
+      "RAIN_HEAVY": 0.05,
+      "THUNDERSTORM": 0.02,
+      "FOG": 0.02,
+      "EXTREME_HEAT": 0.02
+    }
+  },
+
+  "funnel_rates": {
+    "source": "hand_tuned",
+    "note": "TLC contains completed trips only - cancellations can never be calibrated.",
+    "p_no_driver_found": 0.028,
+    "p_cancel_at_requested": 0.032,
+    "p_cancel_at_matched": 0.051,
+    "p_cancel_at_driver_arrived": 0.018,
+    "p_cancel_at_started": 0.002,
+    "cancelled_by_weights": { "RIDER": 0.62, "DRIVER": 0.29, "SYSTEM": 0.09 }
+  },
+
+  "matching": {
+    "source": "hand_tuned",
+    "matching_duration_sec": { "distribution": "lognormal", "mu": 3.55, "sigma": 0.72, "min": 8, "max": 900 },
+    "dispatch_attempt_weights": [0.71, 0.18, 0.07, 0.03, 0.01],
+    "eta_to_pickup_sec": { "distribution": "lognormal", "mu": 5.62, "sigma": 0.48, "min": 60, "max": 2400 },
+    "distance_to_pickup_km": { "distribution": "lognormal", "mu": 0.42, "sigma": 0.66, "min": 0.1, "max": 18.0 },
+    "arrival_delay_sec": { "distribution": "normal", "mean": 42.0, "stddev": 210.0, "min": -240, "max": 1800 },
+    "rider_wait_duration_sec": { "distribution": "lognormal", "mu": 4.28, "sigma": 0.64, "min": 5, "max": 900 }
+  },
+
+  "pricing": {
+    "source": "hand_tuned",
+    "note": "Structure validated against TLC; absolute INR rates from dim_city seed.",
+    "booking_fee_inr": 25.00,
+    "p_toll": 0.06,
+    "toll_amount_inr": { "min": 30.00, "max": 120.00 },
+    "driver_pay_share_of_net": 0.80
+  },
+
+  "surge": {
+    "source": "hand_tuned",
+    "note": "Coupled to simulated supply/demand imbalance, never sampled at random.",
+    "imbalance_to_multiplier": {
+      "ratio_threshold": 0.72,
+      "sensitivity": 1.5,
+      "min_multiplier": 1.0,
+      "smoothing_alpha": 0.35,
+      "_note": "ratio = zone demand rate / zone driver capacity rate. A fleet sized for ~55% utilisation sits near 0.4, so surge fires on localised spikes above 0.45 rather than on baseline load."
+    }
+  },
+
+  "customer_tier_mix": {
+    "source": "hand_tuned",
+    "weights": { "BASIC": 0.58, "SILVER": 0.24, "GOLD": 0.13, "PLATINUM": 0.05 }
+  },
+
+  "payment_method_mix": {
+    "source": "hand_tuned",
+    "note": "India-specific: UPI dominant. No NYC analogue.",
+    "weights": { "UPI": 0.46, "CASH": 0.21, "CARD": 0.14, "WALLET": 0.13, "NETBANKING": 0.04, "CORPORATE": 0.02 }
+  },
+
+  "payments": {
+    "source": "hand_tuned",
+    "p_tip": 0.19,
+    "tip_pct_of_fare": { "min": 0.03, "max": 0.15 },
+    "p_promo_applied": 0.11,
+    "promo_discount_pct": { "min": 0.05, "max": 0.25 },
+    "promo_codes": ["RIDEFLOW50", "FIRSTRIDE", "WEEKEND20", "MONSOON15", "CITYGO10"],
+    "attempt_number_weights": [0.941, 0.044, 0.012, 0.003],
+    "failure_reasons": ["INSUFFICIENT_FUNDS", "CARD_DECLINED", "GATEWAY_TIMEOUT", "AUTH_EXPIRED", "NETWORK_ERROR"],
+    "settlement_lag_sec": { "min": 3, "max": 180 }
+  },
+
+  "driver_sessions": {
+    "source": "hand_tuned",
+    "note": "TLC has no supply-side data at all - see data_strategy.md 1.1.",
+    "session_duration_sec": { "distribution": "lognormal", "mu": 9.62, "sigma": 0.52, "min": 1800, "max": 50400 },
+    "shift_start_hour_weights": [
+      0.02, 0.01, 0.01, 0.02, 0.05, 0.11,
+      0.13, 0.11, 0.07, 0.04, 0.03, 0.03,
+      0.03, 0.03, 0.04, 0.06, 0.08, 0.05,
+      0.03, 0.02, 0.01, 0.01, 0.01, 0.00
+    ],
+    "offline_reason_weights": {
+      "SHIFT_END": 0.71, "BREAK": 0.11, "APP_CLOSED": 0.09,
+      "CONNECTION_LOST": 0.06, "SUSPENDED": 0.01, "UNKNOWN": 0.02
+    },
+    "p_session_left_open": 0.04,
+    "driver_rating": { "distribution": "normal", "mean": 4.72, "stddev": 0.21, "min": 3.20, "max": 5.00 }
+  },
+
+  "device": {
+    "source": "hand_tuned",
+    "rider_platform_weights": { "ANDROID": 0.79, "IOS": 0.19, "WEB": 0.02 },
+    "driver_platform_weights": { "ANDROID": 0.93, "IOS": 0.07 },
+    "rider_app_versions": ["8.12.4", "8.13.9", "8.14.0", "8.14.2"],
+    "driver_app_versions": ["5.1.8", "5.2.0", "5.2.1"]
+  },
+
+  "ingestion_lag_sec": {
+    "source": "hand_tuned",
+    "note": "Normal consumer receipt lag. Anomalous lateness is injected separately.",
+    "distribution": "lognormal",
+    "mu": -0.55,
+    "sigma": 0.42,
+    "min": 0.15,
+    "max": 12.0
+  },
+
+  "zone_flow": {
+    "source": "hand_tuned",
+    "note": "Directional bias by zone type and time of day, driving OD selection.",
+    "morning_peak_hours": [7, 8, 9, 10],
+    "evening_peak_hours": [17, 18, 19, 20],
+    "morning_destination_boost": { "COMMERCIAL": 2.6, "CBD": 1.9, "TRANSIT_HUB": 1.2, "AIRPORT": 1.1, "RESIDENTIAL": 0.4, "SUBURBAN": 0.5 },
+    "evening_destination_boost": { "RESIDENTIAL": 2.4, "SUBURBAN": 1.7, "TRANSIT_HUB": 1.3, "AIRPORT": 1.1, "COMMERCIAL": 0.4, "CBD": 0.6 },
+    "offpeak_destination_boost": { "RESIDENTIAL": 1.0, "COMMERCIAL": 1.0, "CBD": 1.1, "TRANSIT_HUB": 1.0, "AIRPORT": 1.0, "SUBURBAN": 0.9 }
+  }
+}
