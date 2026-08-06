@@ -39,7 +39,7 @@ with events as (
     select * from {{ ref('stg_trip_events') }}
 
     {% if is_incremental() %}
-    where {{ incremental_window('ingested_at') }}
+    where {{ incremental_window('landed_at') }}
     {% endif %}
 
 ),

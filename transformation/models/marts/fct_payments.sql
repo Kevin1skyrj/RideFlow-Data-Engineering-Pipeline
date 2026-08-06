@@ -25,7 +25,7 @@ with payments as (
     select * from {{ ref('stg_payment_completed') }}
 
     {% if is_incremental() %}
-    where {{ incremental_window('ingested_at') }}
+    where {{ incremental_window('landed_at') }}
     {% endif %}
 
 ),

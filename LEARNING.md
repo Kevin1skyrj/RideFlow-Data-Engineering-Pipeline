@@ -588,6 +588,68 @@ Every one of these failed in a way that pointed somewhere other than the cause: 
 
 ---
 
+## 2026-08-06 — M9 — Analytics and the serving layer
+
+**Time spent:** ~3h
+
+### The bug that had been hiding since M4
+
+Rebuilding the warehouse after loading a full day, the N2 reconciliation failed: **4,098 trips landed and never reached `fct_trips`**. dbt succeeded. The marts looked internally consistent. Only the cross-layer check caught it.
+
+Root cause: **`ingested_at` is not an arrival clock.**
+
+The contract says it is "set by the consumer, never the producer" (`event_contract.md` §3.1). But the generator sets it — deliberately, because that is what makes late arrivals and clock skew simulable — and the consumer *preserves* it rather than overwriting. So re-consuming the topic re-landed old events **today** while they kept an `ingested_at` from **March**, and the 48-hour incremental window skipped every one of them.
+
+The fix is a second timestamp: **`landed_at`**, stamped by the consumer at write time. Incremental windows filter on that; `ingested_at` stays the business timestamp for lateness metrics. The distinction is visible in the data:
+
+| Column | Range across the same 105,324 rows |
+|---|---|
+| `landed_at` | 10:29:14 → 10:29:54 — **40 seconds** |
+| `ingested_at` | 2026-03-16 → 2026-08-06 — **5 months** |
+
+Real warehouses have carried a `_loaded_at` distinct from business timestamps forever. I now know why.
+
+### What else I learned
+
+- **I wrote a claim in documentation before measuring it.** `measures.md` asserted that revenue-weighted surge and `AVERAGE(surge_multiplier)` "disagree substantially". Measured: 19.36% vs 19.98% — **0.6 points apart**. They agree closely here because surge happens to rise with fare size, so the weighting nearly cancels. The conceptual trap is real; the empirical claim was invented. Corrected with the actual per-quartile numbers.
+
+- **And I encoded that invented claim as a test assertion**, which then failed on correct data. A test that asserts a property of the *dataset* rather than of the *code* will fail the moment the data legitimately changes.
+
+- **The freshness indicator reported FRESH for data 8 hours in the future.** Negative age fell through `age <= 2`. A dashboard would have shown green for data that is not merely stale but incoherent. Added `FUTURE_DATED`, which also surfaces genuine producer clock skew.
+
+- **Freshness must measure the DATA, not the export.** If ingestion stalls, the export still succeeds every hour. An indicator on `exported_at` shows green while numbers age - confidently wrong, worse than absent.
+
+- **A test asserted a guarantee the architecture never made.** `test_staging_is_queryable_from_any_directory` passed until Airflow ran on its hourly schedule and rebuilt staging views with container paths. Staging views are path-bound by design; **marts are tables and are the actual contract**. Reframed the test onto marts, and staging-dependent tests now skip with a reason instead of failing every hour.
+
+- **Class-scoped fixtures declared inside a test class** tripped a pytest finalizer assertion - four ERRORs with no useful message. Module-level fixture fixed it.
+
+### Problems faced
+
+| Problem | Root cause | Resolution | Time lost |
+|---|---|---|---|
+| 4,098 trips missing from marts | `ingested_at` is producer-set, not monotonic | Added `landed_at`; incremental windows use it | 45 min |
+| `landed_at` column not found | No parquet file had it yet | Rebuilt landing zone from Kafka | 15 min |
+| `column cannot be referenced before it is defined` | `coalesce(landed_at, ...) as landed_at` self-shadows | Qualify the source column | 10 min |
+| Freshness said FRESH for future data | No branch for negative age | `FUTURE_DATED` status | 15 min |
+| Surge test failed on correct data | Asserted a data property, not a code property | Replaced with the F5 invariant | 20 min |
+| 4 warehouse tests failed | Airflow rebuilt staging with container paths | Skip with reason; reframe portability onto marts | 25 min |
+
+### Decisions made
+
+| Decision | Alternatives | Why | Reversible? |
+|---|---|---|---|
+| `landed_at` separate from `ingested_at` | Overwrite `ingested_at` in the consumer | Overwriting destroys the simulated lateness the anomalies depend on | Hard |
+| Export shared by DAG and CLI (`warehouse/export.py`) | Duplicate the logic | An export that differs by caller is a silent source of "the dashboard disagrees with the warehouse" | Easy |
+| Metrics as SQL in `analytics/` | Define them in DAX | DAX lives in a binary that cannot be diffed, reviewed or tested | Easy |
+| Skip staging tests when container-built | Fail them | Failing every hour Airflow runs is the false alarm that trains people to ignore a suite | Easy |
+
+### Open questions
+
+- The `.pbix` cannot be scripted. Everything it depends on is built and verified, but the report itself is unbuilt until someone opens Power BI Desktop.
+- `fct_trips` has 95 columns. Fine for SQL, unwieldy in a Power BI field list - the build guide says to hide most, but a dedicated narrow reporting view would be better.
+
+---
+
 ## Running list of things I got wrong
 
 Kept deliberately. **"Tell me about a mistake you made"** is a standard interview question, and a specific answer with a concrete fix beats a vague one every time.

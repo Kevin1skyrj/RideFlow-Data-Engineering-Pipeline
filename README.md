@@ -228,8 +228,8 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M5 | Warehouse & dbt foundation | ✅ **Complete** — staging layer, exact reconciliation |
 | M6 | Dimensional model | ✅ **Complete** — 19 models, idempotency proven |
 | M7 | Data quality | ✅ **Complete** — gate proven by chaos injection |
-| M8 | Orchestration | ✅ **Complete** — Airflow 3.3 DAG, 9/9 tasks green end-to-end |
-| M9 | Analytics & dashboard | ⬜ Not started |
+| M8 | Orchestration | ✅ **Complete** — Airflow 3.3 DAG, backfill proven |
+| M9 | Analytics & dashboard | 🟡 **Data + metrics done** — `.pbix` is yours to build |
 | M10 | Hardening & documentation | ⬜ Not started |
 
 ### Known Constraints
@@ -403,6 +403,45 @@ Compilation Error: backfill_start and backfill_end must be supplied together.
 ```
 
 **Alerting** is wired via `on_failure_callback`, graded by severity — `dbt_test` and `reconciliation_check` are CRITICAL (wrong numbers), everything else HIGH. Alerts append to `data/processed/_ALERTS.jsonl` so they survive container restarts and log rotation. It writes structured records rather than sending to a channel; wiring a real destination is one function call, but inventing a webhook that doesn't exist would make the alerting *look* implemented when it isn't.
+
+### M9 — analytics & serving layer
+
+**A full 24-hour day now flows through the real pipeline**: 57,168 events → Kafka → consumer (3,624 ev/s) → 105,324 landed → 16,415 trips. The demand curve is finally visible:
+
+```
+ 06    254 #
+ 07    448 ###
+ 08   6137 ############################################## <- PEAK
+ 09   2094 ###############
+ 12    395 ##
+ 18    817 ######  <- PEAK
+ 19    773 #####
+ 03     28
+```
+
+| Deliverable | State |
+|---|---|
+| 19 Parquet marts, verified Power BI-readable (no nested types) | ✅ |
+| [`analytics/metrics/`](analytics/metrics/) — SQL for all four business questions | ✅ |
+| [`dashboard/measures.md`](dashboard/measures.md) — every DAX measure + its dbt equivalent | ✅ |
+| Freshness contract (`_FRESHNESS.json`) | ✅ |
+| [`dashboard/README.md`](dashboard/README.md) — step-by-step build guide | ✅ |
+| **`RideFlow.pbix`** | ⬜ **Manual** — Power BI Desktop is a Windows GUI; `.pbix` cannot be scripted |
+
+**Funnel, measured:**
+
+| Stage | Trips | % of requests | Step conversion |
+|---|---|---|---|
+| Requested | 16,203 | 100.0% | — |
+| Matched | 15,007 | 92.6% | 92.6% |
+| Driver arrived | 14,201 | 87.6% | 94.6% |
+| Started | 13,943 | 86.1% | 98.2% |
+| Completed | 13,897 | 85.8% | 99.7% |
+| Paid | 13,863 | 85.6% | 99.8% |
+
+The biggest loss is **matching — 1,196 trips**, which is a supply problem, not a rider-behaviour one.
+
+> **Known friction: staging views are path-bound.** dbt bakes the landing-zone path into staging *views*, so a warehouse built by Airflow leaves them readable only inside the container. **Marts are tables and are unaffected** — they're the consumer contract, and the four staging-dependent tests skip with an explanatory reason rather than failing. Run `cd transformation && dbt build` on the host to re-enable them.
 
 ### Known Design Gaps
 

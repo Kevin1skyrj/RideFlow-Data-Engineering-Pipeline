@@ -98,7 +98,26 @@ select
     date_diff('millisecond', event_timestamp, ingested_at) / 1000.0 as lateness_sec,
     date_diff('millisecond', event_timestamp, ingested_at) > 300000 as is_late_arrival_event,
 
-    -- Landing-zone partition columns, exposed for incremental filtering.
+    /*
+        PHYSICAL load time - the clock incremental models filter on.
+
+        Distinct from ingested_at, which is a BUSINESS timestamp the generator
+        sets so late arrivals are simulable. ingested_at is not monotonic with
+        respect to the load: re-consuming a topic re-lands old events today
+        while they keep an ingested_at from months ago, and a lookback window
+        based on it silently skips them.
+
+        coalesce for backward compatibility: files written before this column
+        existed have NULL, and falling back to ingested_at is the best
+        available approximation for them.
+
+        Source column QUALIFIED - the output alias is the same name, and DuckDB
+        rejects an unqualified self-reference with "column cannot be referenced
+        before it is defined".
+    */
+    coalesce(ranked.landed_at, ranked.ingested_at) as landed_at,
+
+    -- Landing-zone partition columns.
     dt as landed_date,
     hour as landed_hour
 

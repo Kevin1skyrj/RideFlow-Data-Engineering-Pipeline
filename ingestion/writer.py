@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pyarrow as pa
@@ -50,6 +51,22 @@ LANDING_SCHEMA = pa.schema(
         pa.field("kafka_topic", pa.string(), nullable=False),
         pa.field("kafka_partition", pa.int32(), nullable=False),
         pa.field("kafka_offset", pa.int64(), nullable=False),
+        # ── PHYSICAL load time, distinct from ingested_at ───────────────────
+        # Wall clock when this row was written to the landing zone.
+        #
+        # `ingested_at` is a BUSINESS timestamp - it says when the event was
+        # received in the world being modelled, and the generator sets it so
+        # that late arrivals and clock skew are simulable. It is therefore NOT
+        # monotonic with respect to the physical load: re-consuming a topic
+        # re-lands old events today while they keep an `ingested_at` from
+        # months ago.
+        #
+        # Incremental windows need a clock that only ever moves forward, or a
+        # replay silently falls outside the lookback and those rows never reach
+        # the marts. That failure is invisible: dbt succeeds, the marts look
+        # internally consistent, and only a cross-layer reconciliation catches
+        # it. This column is that clock.
+        pa.field("landed_at", pa.timestamp("ms", tz="UTC"), nullable=False),
     ]
 )
 """Explicit Arrow schema, not inferred.
@@ -94,6 +111,11 @@ class ParquetLandingZoneWriter:
         if not records:
             return WriteResult(0, 0, [])
 
+        # One timestamp for the whole batch: every row in a batch really was
+        # written at the same moment, and per-row clock reads would only add
+        # meaningless microsecond variation.
+        landed_at = datetime.now(UTC)
+
         grouped: dict[Path, list[tuple[ValidEvent, str, int, int]]] = {}
         for event, family, kafka_topic, partition, offset in records:
             directory = self._partition_dir(family, event)
@@ -123,6 +145,7 @@ class ParquetLandingZoneWriter:
                     "kafka_topic": [t for _, t, _, _ in entries],
                     "kafka_partition": [p for _, _, p, _ in entries],
                     "kafka_offset": [o for _, _, _, o in entries],
+                    "landed_at": [landed_at] * len(entries),
                 },
                 schema=LANDING_SCHEMA,
             )

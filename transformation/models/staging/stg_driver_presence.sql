@@ -69,6 +69,10 @@ select
     date_diff('millisecond', event_timestamp, ingested_at) / 1000.0 as lateness_sec,
     date_diff('millisecond', event_timestamp, ingested_at) > 300000 as is_late_arrival_event,
 
+    -- Physical load time; see stg_trip_events for why this is not ingested_at.
+    -- Source column qualified: the alias shares its name.
+    coalesce(ranked.landed_at, ranked.ingested_at) as landed_at,
+
     dt as landed_date,
     hour as landed_hour
 

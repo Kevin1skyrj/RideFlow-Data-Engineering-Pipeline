@@ -34,10 +34,15 @@
     window makes re-running any period produce identical output, which is what
     makes backfill and retry safe.
 
-    The incremental filter uses ingested_at (arrival time, monotonic); business
-    grouping uses the event timestamps. Filtering on event time would let the
-    high-water mark advance past a late-arriving event, missing it PERMANENTLY
-    with no error (etl_design.md 6.2).
+    The incremental filter uses `landed_at` (PHYSICAL load time, monotonic);
+    business grouping uses the event timestamps.
+
+    Not `ingested_at`: that is a business timestamp the producer sets, so it is
+    not monotonic with respect to the load. Re-consuming a topic re-lands old
+    events today while they keep an ingested_at from months ago, and the
+    lookback window skips them - silently, because dbt succeeds and the marts
+    stay internally consistent. That is how 4,098 trips landed and never
+    reached this table.
 */
 
 with trips as (
@@ -51,7 +56,7 @@ with trips as (
     where trip_id in (
         select correlation_id
         from {{ ref('stg_trip_events') }}
-        where {{ incremental_window('ingested_at') }}
+        where {{ incremental_window('landed_at') }}
     )
     {% endif %}
 

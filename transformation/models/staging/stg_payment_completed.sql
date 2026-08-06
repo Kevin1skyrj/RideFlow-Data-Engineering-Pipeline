@@ -15,6 +15,11 @@ select
     event_timestamp,
     ingested_at,
 
+    -- Physical load time. fct_payments filters its incremental window on this,
+    -- so it must be carried through - see stg_trip_events for why it is not
+    -- ingested_at.
+    landed_at,
+
     {{ payload_uuid('payment_id') }}                as payment_id,
     {{ payload_uuid('trip_id') }}                   as trip_id,
     {{ payload_uuid('rider_id') }}                  as rider_id,

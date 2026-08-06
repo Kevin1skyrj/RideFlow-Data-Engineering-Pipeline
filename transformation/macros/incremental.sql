@@ -15,11 +15,23 @@
       produce identical output - which is what makes backfill safe rather than
       a source of double-counting.
 
-    The filter is always applied to an ARRIVAL timestamp (`ingested_at`), never
-    an event timestamp. Arrival time is monotonic, so the high-water mark only
-    ever moves forward. Filtering on event time would let the mark advance past
-    a late-arriving event, which would then be missed PERMANENTLY, with no
-    error and no gap in any log (etl_design.md 6.2).
+    The filter is applied to `landed_at` - the PHYSICAL load time - and never to
+    an event timestamp or to `ingested_at`.
+
+    Why not event time: the high-water mark would advance past a late-arriving
+    event, which would then be missed permanently with no error (etl_design.md
+    6.2).
+
+    Why not ingested_at: it looks like an arrival clock but is a BUSINESS
+    timestamp, set by the producer so that late arrivals are simulable. It is
+    not monotonic with respect to the load. Re-consuming a topic re-lands old
+    events today while they keep an ingested_at from months ago, so a lookback
+    window based on it skips them entirely - and the failure is invisible,
+    because dbt succeeds and the marts stay internally consistent. Measured on
+    real data: 4,098 trips landed and never reached fct_trips.
+
+    `landed_at` only ever moves forward, because the consumer stamps it at
+    write time.
 #}
 
 {% macro incremental_window(timestamp_column) %}
