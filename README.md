@@ -225,8 +225,8 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M2 | Event generator | ✅ **Complete** — 83 tests passing |
 | M3 | Streaming infrastructure | ✅ **Complete** — verified against a live broker |
 | M4 | Ingestion consumer | ✅ **Complete** — zero loss proven under SIGKILL |
-| M5 | Warehouse & dbt foundation | ✅ **Complete** — 11 models, 92 dbt tests, exact reconciliation |
-| M6 | Dimensional model | ⬜ Not started |
+| M5 | Warehouse & dbt foundation | ✅ **Complete** — staging layer, exact reconciliation |
+| M6 | Dimensional model | ✅ **Complete** — 19 models, 161 dbt tests, idempotency proven |
 | M7 | Data quality | ⬜ Not started |
 | M8 | Orchestration | ⬜ Not started |
 | M9 | Analytics & dashboard | ⬜ Not started |
@@ -298,6 +298,27 @@ Deduplication is verifiable rather than assumed: the landing zone holds 17,893 r
 cd transformation
 dbt seed && dbt run && dbt test && dbt source freshness
 ```
+
+### M6 exit criteria — proven
+
+| Criterion | Result |
+|---|---|
+| `dbt build` | **19 models, 160 pass / 1 warn / 0 errors** across 161 tests |
+| Marts answer every §2.1 question | marketplace health, funnel, pricing, financial truth |
+| **Idempotency** | **byte-identical marts** across incremental re-run *and* full refresh |
+
+Idempotency is proven by hashing every mart's content (excluding audit columns), re-running dbt, and comparing:
+
+```
+fct_trips|2720|70e34a6b2e23cba9        <- identical before and after
+fct_payments|2358|cb1ad27f5fb55f80
+fct_driver_sessions|2288|483a5a1875b2c68a
+fct_trip_events|15089|e77d40a6c8da30c8
+```
+
+**Local time keys work**: UTC hour 2 → local hour 8, so the Bengaluru morning peak lands at 08–09 IST rather than 02–03 UTC.
+
+**Financial reconciliation is exact.** For trips holding both a completion and a payment: `sum(total_fare) - sum(trip_fare) = 0.00`. The ₹5,712.98 apparent gap traces to exactly 11 payments whose `RideCompleted` was quarantined in the DLQ.
 
 ### Known Design Gaps
 

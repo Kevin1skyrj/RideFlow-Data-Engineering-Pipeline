@@ -7,6 +7,18 @@
 #
 # There are no credentials here to protect - DuckDB is a local file. A cloud
 # warehouse profile would read secrets from the environment instead.
+#
+# ── Why every target pins TimeZone: "UTC" ────────────────────────────────────
+# DuckDB inherits the machine's timezone by default. On a machine set to
+# Asia/Calcutta, `extract(hour FROM a_timestamptz)` silently returns IST - so
+# date/time logic APPEARS correct there and returns UTC hours on a CI runner.
+# The Bengaluru morning peak would land at 02:00 instead of 08:00, and the chart
+# would look plausible enough to be rationalised rather than investigated.
+#
+# Pinned to UTC, every conversion must be explicit via
+# `AT TIME ZONE dim_city.timezone`, and results are identical on every machine.
+# tests/assert_session_timezone_is_utc.sql asserts the setting is in force, so
+# this cannot regress silently.
 
 rideflow:
   target: dev
@@ -25,6 +37,10 @@ rideflow:
       extensions:
         - json      # payload_json extraction in staging
         - parquet   # reading the landing zone
+        - icu       # named timezones for AT TIME ZONE
+
+      settings:
+        TimeZone: "UTC"
 
     # Same engine, separate database file, so a test run can never touch the
     # real warehouse.
@@ -35,6 +51,9 @@ rideflow:
       extensions:
         - json
         - parquet
+        - icu
+      settings:
+        TimeZone: "UTC"
 
     # In-memory: nothing persists. Used by CI, where the landing zone is
     # generated fresh and the warehouse is disposable by definition.
@@ -45,3 +64,6 @@ rideflow:
       extensions:
         - json
         - parquet
+        - icu
+      settings:
+        TimeZone: "UTC"

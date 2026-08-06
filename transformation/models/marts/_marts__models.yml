@@ -1,0 +1,128 @@
+version: 2
+
+models:
+  - name: fct_trips
+    description: >
+      Primary fact. GRAIN: one row per trip - completed, cancelled or expired.
+      Restricting to completions would make the conversion funnel unanswerable.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: city_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: { to: ref('dim_city'), field: city_id }
+      - name: ride_status_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: { to: ref('dim_ride_status'), field: ride_status_id }
+      - name: vehicle_type_id
+        description: >
+          -1 for unmatched trips - no driver means no delivered vehicle. That is
+          meaningful absence, not a lookup failure.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: { to: ref('dim_vehicle_type'), field: vehicle_type_id }
+      - name: customer_tier_id
+        description: Point-in-time. -1 for orphaned trips with no RideRequested.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: { to: ref('dim_customer_tier'), field: customer_tier_id }
+      - name: request_date_id
+        description: LOCAL date key, resolved through dim_city.timezone.
+        data_tests:
+          - relationships:
+              arguments: { to: ref('dim_date'), field: date_id }
+      - name: request_time_id
+        description: LOCAL time-of-day key.
+        data_tests:
+          - relationships:
+              arguments: { to: ref('dim_time'), field: time_id }
+      - name: is_inferred_expired
+        description: >
+          INFERRED, not observed. No event produces EXPIRED, so this is
+          indistinguishable from a trip whose later events were lost. Named with
+          the is_inferred_ prefix so it cannot be presented with the same
+          confidence as is_completed.
+        data_tests: [not_null]
+      - name: funnel_stage_reached
+        data_tests: [not_null]
+
+  - name: fct_payments
+    description: "GRAIN: one row per payment. Separate from fct_trips because it becomes one-to-many the moment refunds exist."
+    columns:
+      - name: payment_id
+        data_tests: [unique, not_null]
+      - name: trip_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: { to: ref('fct_trips'), field: trip_id }
+      - name: payment_method_id
+        data_tests:
+          - relationships:
+              arguments: { to: ref('dim_payment_method'), field: payment_method_id }
+      - name: payment_status_id
+        data_tests:
+          - relationships:
+              arguments: { to: ref('dim_payment_status'), field: payment_status_id }
+      - name: amount_charged
+        data_tests: [not_null]
+
+  - name: fct_driver_sessions
+    description: "GRAIN: one row per driver duty session. The supply side."
+    columns:
+      - name: session_id
+        data_tests: [unique, not_null]
+      - name: driver_id
+        data_tests: [not_null]
+      - name: online_zone_id
+        data_tests:
+          - relationships:
+              arguments: { to: ref('dim_zone'), field: zone_id }
+      - name: is_session_open
+        description: >
+          An open session is legitimate - the driver was still on duty when the
+          window closed. session_duration_sec stays NULL rather than being
+          imputed, because a fabricated end time inflates every utilisation
+          denominator.
+        data_tests: [not_null]
+
+  - name: fct_trip_events
+    description: "GRAIN: one row per event. The atomic fact behind fct_trips."
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: trip_id
+        data_tests: [not_null]
+      - name: event_sequence_number
+        description: Causal position, ordered by event_timestamp - never arrival order.
+        data_tests: [not_null]
+
+  - name: dim_date
+    columns:
+      - name: date_id
+        data_tests: [unique, not_null]
+      - name: day_of_week
+        description: ISO - 1 = Monday .. 7 = Sunday.
+        data_tests:
+          - accepted_values:
+              arguments: { values: [1, 2, 3, 4, 5, 6, 7] }
+
+  - name: dim_time
+    description: Exactly 1,440 rows, one per minute, reused across every date.
+    columns:
+      - name: time_id
+        data_tests: [unique, not_null]
+      - name: hour_24
+        data_tests: [not_null]
+      - name: day_part
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [NIGHT, EARLY_MORNING, MORNING_PEAK, MIDDAY,
+                         EVENING_PEAK, EVENING, LATE_NIGHT]

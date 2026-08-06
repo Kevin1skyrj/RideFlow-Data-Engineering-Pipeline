@@ -423,6 +423,63 @@ Set the landing-zone path absolute from the first line. I wrote eleven models on
 
 ---
 
+## 2026-08-06 — M6 — Dimensional model
+
+**Time spent:** ~4h
+
+### What I learned
+
+- **A "working" query can be accidentally right.** `extract(hour from a_timestamptz)` returned 8 for an 02:42 UTC timestamp — the correct IST answer — because DuckDB inherits the *machine's* timezone and mine is Asia/Calcutta. The code had no timezone conversion in it at all. On a UTC CI runner the same code returns 2, and the morning peak silently moves to 2 a.m. Pinned `TimeZone: "UTC"` in every profile target and added a test asserting it, so this cannot regress.
+
+- **`replace_all` is dangerous on near-identical blocks.** Fixing the three profile targets, my edit matched `test` and `ci` but skipped `dev` — the default — because `dev` had inline comments. Two of three fixed is worse than none: it looks done.
+
+- **DuckDB's `/` is true division.** `cast(minute_of_day / 60 as smallint)` rounds 1.5 to 2, so `dim_time` had the wrong hour for a large share of minutes, duplicate keys, and a broken FK from `fct_trips`. `//` is integer division. Caught only because a uniqueness test existed on a generated dimension — it is tempting to skip tests on data you generated yourself.
+
+- **Jinja renders before SQL is parsed, so a SQL comment does not protect a Jinja tag.** I broke the model *twice* while writing a comment explaining a Jinja fix: first with a literal block-tag opener, then with the same thing inside quotes. An unmatched opener anywhere in the file — comment or not — breaks the template.
+
+- **`ref()` inside a conditional needs an explicit `depends_on` hint.** Without it the model builds on a full refresh and fails on every incremental run. That failure hides itself: the model keeps its previous content and the marts still look correct.
+
+- **A trip belongs to the shift that dispatched it, not the one it finished in.** Attributing trips to driver sessions by `completed_at` collapsed agreement with the driver-reported count to 109 of 502 sessions, because 392 of 531 trips complete *after* their driver goes offline — drivers finish the fare they were on. Switching to `accepted_at` raised agreement to 490 of 502.
+
+- **Name inferred columns so they cannot be mistaken for observations.** `is_expired` became `is_inferred_expired` in the mart. No event produces EXPIRED, so it is indistinguishable from a trip whose later events were lost. The prefix makes it impossible to present with the same confidence as `is_completed`.
+
+- **`-1` foreign keys are the design working, not failures.** 161 trips have `vehicle_type_id = -1` because they were never matched — no driver means no delivered vehicle. 12 have `customer_tier_id = -1` because their `RideRequested` was quarantined. A null would have dropped all 173 from every inner join, silently.
+
+### The false-green problem
+
+My idempotency proof passed **three times while proving nothing**:
+
+1. `fct_trips` errored on the incremental path, kept its old content, and the hashes matched trivially.
+2. After adding a guard, the second dbt run failed to compile entirely — again nothing was rebuilt, again the hashes matched.
+3. The guard itself then produced a false *positive*, matching the literal string `ERROR=0` in dbt's success summary.
+
+Only after fixing all three did the proof mean anything: `PASS=19 ERROR=0` on both runs, byte-identical marts across an incremental re-run *and* a full refresh.
+
+**A verification that cannot fail is not a verification.** The guard now asserts dbt actually succeeded before comparing hashes — because "nothing changed" and "nothing ran" produce identical evidence.
+
+### Problems faced
+
+| Problem | Root cause | Resolution | Time lost |
+|---|---|---|---|
+| Timezone conversion appeared to be a no-op | Session TZ inherited from the machine | Pin `TimeZone: "UTC"` + regression test | 30 min |
+| Only 2 of 3 profile targets fixed | `replace_all` missed the block with comments | Rewrote the file | 10 min |
+| `dim_time` had duplicate keys | `/` is true division; cast rounded | Use `//` | 20 min |
+| `fct_trips` failed on incremental only | `ref()` inside a conditional | `depends_on` hint | 15 min |
+| Model broke while documenting the fix | Jinja tag opener inside a SQL comment | Describe it in words | 15 min |
+| Session/trip counts disagreed 393/502 | Attributed trips by completion, not dispatch | Join on `accepted_at` | 25 min |
+| Idempotency proof was false-green ×3 | Guard absent, then wrong, then over-matching | Assert `ERROR=[1-9]`, not `ERROR` | 25 min |
+
+### What I'd do differently
+
+Write the guard before the proof. Every one of the three false greens would have been caught immediately by a script that refused to compare hashes unless dbt reported success first.
+
+### Open questions
+
+- Current data covers only ~08:00–10:00 IST, so `MORNING_PEAK` is the only populated `day_part`. The marts *can* answer the pricing question; the dataset does not yet exercise the evening peak.
+- 11 payments have no `RideCompleted` (S3 violation) because the completion was quarantined. Financially exact once excluded, but M7 must decide whether to quarantine those payments too.
+
+---
+
 ## Running list of things I got wrong
 
 Kept deliberately. **"Tell me about a mistake you made"** is a standard interview question, and a specific answer with a concrete fix beats a vague one every time.
