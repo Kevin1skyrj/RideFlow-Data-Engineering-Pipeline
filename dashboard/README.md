@@ -71,10 +71,27 @@ Power BI will auto-detect most. Verify each is **single-direction, many-to-one**
 | `fct_trips` | `dim_zone` | `pickup_zone_id` → `zone_id` |
 | `fct_trips` | `dim_ride_status` | `ride_status_id` → `ride_status_id` |
 | `fct_trips` | `dim_vehicle_type` | `vehicle_type_id` → `vehicle_type_id` |
-| `fct_trips` | `dim_cancellation_reason` | `cancellation_reason_id` → … |
-| `fct_trips` | `dim_customer_tier` | `customer_tier_id` → … |
-| `fct_payments` | `fct_trips` | `trip_id` → `trip_id` |
+| `fct_trips` | `dim_cancellation_reason` | `cancellation_reason_id` → `cancellation_reason_id` |
+| `fct_trips` | `dim_customer_tier` | `customer_tier_id` → `customer_tier_id` |
+| `fct_trips` | `dim_weather` | `request_weather_id` → `weather_id` |
+| `fct_payments` | `dim_date` | `paid_date_id` → `date_id` |
+| `fct_payments` | `dim_time` | `paid_time_id` → `time_id` |
+| `fct_payments` | `dim_payment_method` | `payment_method_id` → `payment_method_id` |
+| `fct_driver_sessions` | `dim_date` | `online_date_id` → `date_id` |
+| `fct_driver_sessions` | `dim_time` | `online_time_id` → `time_id` |
 | `fct_driver_sessions` | `dim_zone` | `online_zone_id` → `zone_id` |
+| `fct_driver_sessions` | `dim_vehicle_type` | `vehicle_type_id` → `vehicle_type_id` |
+
+> ### No fact-to-fact relationship
+> An earlier version of this table listed `fct_payments` → `fct_trips` on `trip_id`. **Delete that relationship if Power BI auto-detects it.**
+>
+> Payments are 1:1 with trips here, so Power BI creates a one-to-one relationship — and one-to-one relationships in Power BI always filter *bidirectionally*. That opens a second path from `dim_date` to `fct_payments` (direct, and via `fct_trips`), which is exactly the ambiguity the star schema exists to prevent.
+>
+> Both facts carry their own conformed keys (`city_id`, `paid_date_id`, `payment_method_id`), so comparing charged against collected is a **drill-across** — filter both facts through the shared dimensions, never join one to the other. That is the Kimball rule, and here Power BI enforces it for us.
+
+**Role-playing dimensions.** `fct_trips` carries four zone keys (`pickup_`, `dropoff_`, `actual_dropoff_`, `driver_pickup_`), two weather keys and two traffic keys. Only **one** relationship per table pair can be active. Keep `pickup_zone_id` and `request_weather_id` active; leave the rest with no relationship at all rather than an inactive one, unless a specific visual needs `USERELATIONSHIP`. An inactive relationship nobody activates is a line on a diagram that does nothing.
+
+**Expected blank row.** 86 quarantined trips have a null `request_date_id`, so Power BI will report blank values on the `fct_trips` → `dim_date` relationship. That is correct: those trips never emitted a valid `RideRequested`, which is *why* they are quarantined. Every measure filters `is_quarantined = FALSE`, so they never reach a number.
 
 > ### The model view is a test of the dimensional model
 > A correctly-conformed star loads **without a single warning**. If Power BI reports ambiguous relationships or refuses a join, the warehouse model is wrong — fix it in dbt, not with a workaround here. That diagnostic is a genuine reason to use a BI tool rather than a Python chart library.

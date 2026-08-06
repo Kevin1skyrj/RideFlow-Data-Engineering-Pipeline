@@ -38,7 +38,25 @@ supply as (
 
     select
         online_zone_id                                              as zone_id,
-        cast(strftime(online_at, '%H') as integer)                  as utc_hour,
+        /*
+            LOCAL hour, to match demand's request_local_hour.
+
+            This was `strftime(online_at, '%H')`, which is UTC - the session
+            timestamps are timestamptz and the session pins TimeZone='UTC'.
+            Comparing a UTC hour to a local one would have shifted the whole
+            supply curve by 5h30m and put the Bengaluru morning peak in the
+            middle of the night.
+
+            online_time_id is already a local HHMM key into dim_time (verified:
+            zero orphans), so integer-dividing by 100 is the hour with no
+            conversion to get wrong.
+
+            `//`, not `/`. DuckDB's `/` is TRUE division, so `640 / 100` is
+            6.4 - which would never equal an integer hour and would silently
+            produce an empty supply join. The same operator caused duplicate
+            dim_time keys in M6.
+        */
+        online_time_id // 100                                       as local_hour,
         count(*)                                                    as driver_sessions,
         sum(observed_trips_completed)                               as trips_served,
         -- Open sessions have NULL duration and are excluded from the average
@@ -82,5 +100,22 @@ select
 
 from demand as d
 join read_parquet('data/processed/dim_zone.parquet') as z using (zone_id)
-left join supply as s on s.zone_id = d.zone_id
+/*
+    Join on BOTH keys.
+
+    This was `on s.zone_id = d.zone_id` alone, which dropped the hour and
+    matched every demand row to all 24 supply rows for its zone - a 24x
+    fan-out producing 13,349 rows from 599 real zone-hours.
+
+    The irony is that both CTEs aggregate correctly: the fan trap this file's
+    header warns about was reintroduced by the join that was supposed to avoid
+    it. Aggregating to a grain is only half of a drill-across; joining on the
+    whole of that grain is the other half.
+
+    Guarded by tests/integration/test_analytics.py: the result must not exceed
+    the number of distinct zone-hours in demand.
+*/
+left join supply as s
+    on  s.zone_id    = d.zone_id
+    and s.local_hour = d.local_hour
 order by unmet_demand_pct desc nulls last, d.requests desc

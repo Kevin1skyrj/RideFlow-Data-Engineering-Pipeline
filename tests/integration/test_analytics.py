@@ -121,6 +121,112 @@ class TestMetricQueries:
         trips = con.sql(sql).df()["trips"].tolist()
         assert trips == sorted(trips, reverse=True), f"funnel not monotonic: {trips}"
 
+    def test_marketplace_health_does_not_fan_out(self, con):
+        """Regression guard for a fan trap in a drill-across query.
+
+        The supply CTE was joined on `zone_id` alone, dropping the hour, so
+        every demand row matched all 24 supply rows for its zone: 13,349 output
+        rows from 599 real zone-hours, and `driver_sessions` inflated 24x.
+
+        Nothing failed. The query ran, returned plausible per-row numbers, and
+        the file's own header comment claimed it avoided exactly this. Only the
+        row COUNT gave it away - which is why the count is what this asserts.
+
+        Aggregating each fact to a common grain is only half of a drill-across.
+        Joining on the whole of that grain is the other half.
+        """
+        rows = len(
+            con.sql((METRICS_DIR / "marketplace_health.sql").read_text(encoding="utf-8")).df()
+        )
+
+        zone_hours = con.sql(f"""
+            SELECT count(*) FROM (
+              SELECT DISTINCT pickup_zone_id, request_local_hour
+              FROM read_parquet('{_parquet('fct_trips')}')
+              WHERE NOT is_quarantined AND requested_at IS NOT NULL
+            )
+            """).fetchone()[0]
+
+        assert rows == zone_hours, (
+            f"marketplace_health returned {rows} rows for {zone_hours} distinct "
+            f"zone-hours - the supply join is fanning out"
+        )
+
+    def test_marketplace_health_does_not_invent_supply(self, con):
+        """The fan-out's real damage: driver_sessions counted 24 times.
+
+        Row count alone would not catch a join that duplicated supply without
+        adding rows, so the supply total is asserted independently. It must not
+        EXCEED the true number of sessions; it may be lower, because zone-hours
+        with supply but no demand are correctly absent from a demand-led join.
+        """
+        reported = (
+            con.sql((METRICS_DIR / "marketplace_health.sql").read_text(encoding="utf-8"))
+            .df()["driver_sessions"]
+            .sum()
+        )
+
+        actual = con.sql(
+            f"SELECT count(*) FROM read_parquet('{_parquet('fct_driver_sessions')}')"
+        ).fetchone()[0]
+
+        assert (
+            reported <= actual
+        ), f"query reports {reported} driver sessions but only {actual} exist"
+
+    def test_supply_hour_is_local_not_utc(self, con):
+        """The second bug in the same join, which the first one hid.
+
+        The supply CTE derived its hour from `strftime(online_at, '%H')`. Those
+        timestamps are timestamptz and the session pins TimeZone='UTC', so that
+        is a UTC hour being compared to demand's LOCAL hour - a 5h30m shift for
+        Asia/Kolkata, which would have moved the morning peak into the night.
+
+        It was invisible while the join ignored the hour entirely. Fixing the
+        fan-out is what would have exposed it, had it not been fixed too.
+
+        Asserted on BEHAVIOUR, not on the text of the query. The first version
+        of this test grepped the file for `strftime(online_at` - and failed,
+        because the comment explaining the fix contains that string. A test that
+        reads source code rather than results fails for reasons that have
+        nothing to do with correctness.
+        """
+        # Independently computed supply, by LOCAL hour. If the query used UTC,
+        # its per-zone-hour counts would land against the wrong hours and stop
+        # matching this.
+        expected = con.sql(f"""
+            SELECT z.zone_name, s.online_time_id // 100 AS local_hour, count(*) AS sessions
+            FROM read_parquet('{_parquet('fct_driver_sessions')}') s
+            JOIN read_parquet('{_parquet('dim_zone')}') z ON z.zone_id = s.online_zone_id
+            GROUP BY 1, 2
+            """).df()
+        lookup = {(r.zone_name, r.local_hour): r.sessions for r in expected.itertuples()}
+
+        actual = con.sql((METRICS_DIR / "marketplace_health.sql").read_text(encoding="utf-8")).df()
+
+        wrong = [
+            (
+                r.zone_name,
+                r.local_hour,
+                r.driver_sessions,
+                lookup.get((r.zone_name, r.local_hour), 0),
+            )
+            for r in actual.itertuples()
+            if r.driver_sessions != lookup.get((r.zone_name, r.local_hour), 0)
+        ]
+        assert not wrong, f"supply misaligned for {len(wrong)} zone-hours, e.g. {wrong[:3]}"
+
+        # Guards against the whole test being vacuous: if local and UTC hours
+        # never differed, the assertion above would hold either way.
+        differing = con.sql(f"""
+            SELECT count(*) FROM read_parquet('{_parquet('fct_driver_sessions')}')
+            WHERE online_time_id // 100 != extract(hour FROM online_at)
+            """).fetchone()[0]
+        assert differing > 0, (
+            "local and UTC session hours never differ - this dataset cannot "
+            "detect the bug, so the test proves nothing"
+        )
+
     def test_completion_rate_is_plausible(self, con):
         rate = con.sql(f"""
             SELECT 100.0 * sum(CASE WHEN is_completed THEN 1 ELSE 0 END) / count(*)

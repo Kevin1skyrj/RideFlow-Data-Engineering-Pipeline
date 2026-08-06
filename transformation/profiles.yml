@@ -55,11 +55,24 @@ rideflow:
       settings:
         TimeZone: "UTC"
 
-    # In-memory: nothing persists. Used by CI, where the landing zone is
-    # generated fresh and the warehouse is disposable by definition.
+    # CI. Writes to the SAME default path as dev, deliberately.
+    #
+    # This target was originally `:memory:`, on the reasoning that a CI
+    # warehouse is disposable. That conflated two different things: the
+    # warehouse is disposable ACROSS runs (the runner is destroyed), but it must
+    # persist WITHIN a run. An in-memory DuckDB is dropped when the dbt process
+    # exits, so `dbt seed` and `dbt build` would each start from an empty
+    # database, and `warehouse.export` would find nothing to export.
+    #
+    # The failure mode was the dangerous kind: dbt reports success at every
+    # step, the export writes zero rows, and the integration tests skip with
+    # "no warehouse found" - a fully green pipeline that proved nothing.
+    #
+    # The path matches warehouse.connection.WAREHOUSE_PATH's default so the
+    # export and the test suite find it without extra configuration.
     ci:
       type: duckdb
-      path: ":memory:"
+      path: "../data/warehouse/rideflow.duckdb"
       threads: 4
       extensions:
         - json

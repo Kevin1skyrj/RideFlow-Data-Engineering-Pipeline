@@ -1,0 +1,217 @@
+name: CI
+
+# Three jobs, because they prove three different things and fail for three
+# different reasons. A single job that lints, builds and streams would report
+# one red X for any of them, and the badge would stop meaning anything specific.
+#
+#   quality   - the code is clean and the pure logic is correct   (~2 min)
+#   pipeline  - the warehouse builds from nothing and reconciles  (~8 min)
+#   streaming - the documented compose file brings up a working broker
+#
+# `quality` is the badge on the README: it is fast, has no infrastructure, and
+# cannot flake for reasons unrelated to the code.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A superseded run proves nothing. Cancel it rather than pay for it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # dbt resolves profiles.yml from the working directory, but being explicit
+  # means the workflow does not silently depend on which directory a step
+  # happens to run in.
+  DBT_PROFILES_DIR: transformation
+
+jobs:
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Lint and unit tests (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # pyproject declares requires-python >=3.11. Testing only the version on
+        # the author's laptop would make that claim untested.
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint
+        run: |
+          ruff check .
+          black --check .
+
+      - name: Unit and contract tests
+        # No warehouse, no broker. These must pass on a bare checkout - if any
+        # of them needs infrastructure, it is in the wrong directory.
+        run: pytest tests/unit tests/contract
+
+  # ---------------------------------------------------------------------------
+  pipeline:
+    name: Warehouse builds from a clean checkout
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate a bounded window into the landing zone
+        # --sink partitioned writes Parquet directly, bypassing Kafka. The
+        # streaming path is proven separately; conflating them here would mean a
+        # broker hiccup reported itself as a broken warehouse.
+        #
+        # Fixed seed: a CI failure must be reproducible locally with the same
+        # command, otherwise the run is a coin toss rather than a test.
+        run: |
+          python -m event_generator.main \
+            --sink partitioned \
+            --duration 3600 \
+            --trips-per-hour 600 \
+            --seed 42
+
+      - name: Build the warehouse
+        working-directory: transformation
+        # `dbt build` runs seeds, models and tests together in DAG order, so a
+        # failing test stops its downstream models rather than letting them
+        # build on data already known to be wrong. There is no packages.yml, so
+        # no `dbt deps` step - adding one would fail on a clean checkout.
+        run: dbt build --target ci
+
+      - name: Export marts
+        run: python -m warehouse.export
+
+      - name: Full test suite
+        # Now that the warehouse exists, the integration tests stop skipping.
+        # Running them before the build would report a green suite that asserted
+        # almost nothing - the exact false pass this project has hit before.
+        run: pytest
+
+      - name: Report what was built
+        if: always()
+        run: |
+          echo "### Warehouse built" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -lh data/processed/ >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          cat data/processed/_FRESHNESS.json >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload marts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marts
+          path: |
+            data/processed/
+            transformation/target/run_results.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  streaming:
+    name: Compose file brings up a working broker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start Kafka
+        # The repository's own compose file, not a CI-specific one. Testing a
+        # different config would prove that the CI config works and leave the
+        # documented one unverified.
+        run: |
+          docker compose -f docker/docker-compose.yml up -d --wait
+          docker compose -f docker/docker-compose.yml ps
+
+      - name: Verify topics were created with the intended partitioning
+        run: |
+          docker exec rideflow-broker /opt/kafka/bin/kafka-topics.sh \
+            --bootstrap-server localhost:9092 --describe
+
+      - name: Produce
+        run: |
+          python -m event_generator.main \
+            --sink kafka \
+            --bootstrap-servers localhost:29092 \
+            --duration 600 \
+            --trips-per-hour 600 \
+            --seed 42
+
+      - name: Consume
+        # --idle-timeout makes the run bounded. Without it the consumer blocks
+        # forever and the job dies on the workflow timeout, which reports as a
+        # failure with no usable signal.
+        run: |
+          python -m ingestion.main \
+            --bootstrap-servers localhost:29092 \
+            --group-id ci-$GITHUB_RUN_ID \
+            --idle-timeout 30 \
+            --verbose
+
+      - name: Reconcile
+        # Asserts on structured state, never on parsed CLI output. Every false
+        # green in this project's history came from a script that read
+        # human-readable text and matched nothing.
+        run: |
+          python - <<'PY'
+          import sys
+          from warehouse.connection import landing_zone_counts
+
+          counts = landing_zone_counts()
+          print(counts)
+
+          if counts["rows"] == 0:
+              sys.exit("landing zone is empty - nothing was consumed")
+          if counts["distinct_event_ids"] == 0:
+              sys.exit("rows landed but no distinct event ids - schema is wrong")
+          PY
+
+      - name: Broker logs on failure
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down -v

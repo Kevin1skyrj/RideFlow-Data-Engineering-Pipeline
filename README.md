@@ -2,23 +2,39 @@
 
 **A real-time ride-hailing data platform — Kafka → Parquet lakehouse → dbt → DuckDB → Power BI, orchestrated by Airflow.**
 
-![Status](https://img.shields.io/badge/status-design%20complete%2C%20implementation%20pending-orange)
-![Milestone](https://img.shields.io/badge/milestone-M1%20complete-blue)
+![Status](https://img.shields.io/badge/status-M0--M8%20complete%20%C2%B7%20M9%20in%20progress-brightgreen)
+![Tests](https://img.shields.io/badge/tests-221%20passing-brightgreen)
+![dbt](https://img.shields.io/badge/dbt-21%20models%20%C2%B7%20167%20tests-orange)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
-> ## ⚠️ Current status: **design complete, implementation not started**
->
-> This repository currently contains **documentation only**. There is no runnable code yet.
->
-> The **How to Run** section below describes the *target* state and **will not work today**. It is published early so the design is reviewable before it is built — which is the whole point of finishing the specification first.
->
-> **What exists:** 8 design documents, a frozen event contract, a dimensional model, and a 30-event verified sample dataset.
-> **What does not:** every Python module, dbt model, Docker service, DAG, and the Power BI report.
->
-> Progress is tracked in [Implementation Status](#8-implementation-status).
+## What this actually produces
+
+The pipeline runs end to end. These figures come from a full simulated day pushed through Kafka → landing zone → dbt → DuckDB → exported marts:
+
+| | |
+|---|---|
+| Trips requested | **16,203** |
+| Trips completed | **13,897** (85.8%) |
+| Gross bookings | **₹7,936,695** |
+| Platform commission | **₹1,511,749** |
+| Trips quarantined | **212** — exported for inspection, excluded from every measure |
+| Events landed | **90,186** across 9 event types |
+
+**Verified, not asserted:** 221 pytest tests and 167 dbt tests pass against the built warehouse. Financial invariants (fare decomposition, payout split, surge derivation) are `error`-severity — the pipeline fails rather than publishes a number that doesn't reconcile.
+
+| Layer | State |
+|---|---|
+| Event generator → Kafka → consumer | ✅ Running, 4,368 events/s sustained |
+| Landing zone → dbt → DuckDB | ✅ 21 models, medallion layering, idempotent incrementals |
+| Airflow orchestration | ✅ 9-task DAG, containerised, backfill via `dag_run.conf` |
+| Exported marts | ✅ 19 Parquet files + freshness marker |
+| Power BI report | 🔨 **In progress** — measures and build guide in [`dashboard/`](dashboard/) |
+| Hardening, ADRs, runbook | ⬜ M10 |
+
+Full breakdown: [Implementation Status](#8-implementation-status).
 
 ---
 
@@ -147,15 +163,13 @@ Full detail: [`docs/etl_design.md`](docs/etl_design.md)
 
 ## 6. How to Run
 
-> ⚠️ **None of this works yet.** This is the target state, published for review. See [Implementation Status](#8-implementation-status).
+> These commands work. The only step that needs a GUI is the Power BI report — the marts are plain Parquet and readable without it.
 
 ### Prerequisites
 
 - Python 3.11 or 3.12 *(see [Known Constraints](#known-constraints) — 3.13 is not yet verified)*
 - Docker Desktop, **running**
 - Power BI Desktop *(Windows only, optional — Parquet marts are readable without it)*
-
-### Target commands
 
 ```bash
 # 1. Environment
@@ -169,16 +183,33 @@ docker compose ps                    # verify health checks pass
 
 # 3. Generate and ingest
 python -m event_generator.main --rate 500 --duration 600 --seed 42
-python -m ingestion.consumer
+python -m ingestion.main
 
 # 4. Transform
-cd transformation && dbt deps && dbt seed && dbt run && dbt test
+cd transformation && dbt deps && dbt seed && dbt build
 
-# 5. Explore
+# 5. Export marts for BI
+python -m warehouse.export
+
+# 6. Explore
 duckdb data/warehouse/rideflow.duckdb
 ```
 
+Or run steps 4–5 on a schedule:
+
+```bash
+docker compose -f docker/docker-compose.airflow.yml up -d
+```
+
 Airflow UI at `localhost:8080`, Kafka UI at `localhost:8081`.
+
+**Verify it worked:**
+
+```bash
+pytest                               # 221 passed, 5 skipped
+```
+
+The 5 skips are deliberate — staging models are views with the landing-zone path compiled in, so they are unreadable from the host when Airflow built the warehouse inside a container. The marts are tables and carry no path dependency. The tests skip with an explanation rather than failing, because a suite that cries wolf on every scheduled run is a suite people stop reading.
 
 ---
 
@@ -234,18 +265,22 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 
 ### Known Constraints
 
-Three items must be resolved before implementation begins. They were found by inspecting the actual environment, not assumed:
+Open items, stated rather than hidden:
 
-1. **Docker daemon is not running.** Docker Desktop 28.4.0 and Compose v2.39.4 are installed, but the engine is not started. M3 onward cannot be tested until it is.
-2. ~~**Python 3.13 compatibility with dbt.**~~ ✅ **Resolved.** Verified against the package index, not assumed: dbt-core 1.12.0, dbt-duckdb 1.10.1, duckdb 1.5.5, confluent-kafka 2.15.0 and pyarrow 25.0.0 all resolve together on Python 3.13.5 with native cp313 wheels. Pinned in [`requirements.txt`](requirements.txt).
-3. ~~**Interpreter path contains an ampersand.**~~ ✅ **Downgraded.** `py -0p` registers a 3.13 at `...\AI & ML\python.exe`, but `python` on PATH actually resolves to `C:\Users\...\anaconda3\python.exe`, which has no problematic characters. The project-local `.venv` is used regardless, so the hazard never applies.
+1. **Power BI is Windows-only and the `.pbix` is a binary.** It cannot be generated, diffed, or tested in CI. Accepted deliberately ([`architecture.md`](docs/architecture.md) §0) and mitigated by keeping every measure definition in reviewable Markdown ([`dashboard/measures.md`](dashboard/measures.md)) and every metric in SQL ([`analytics/metrics/`](analytics/metrics/)).
+2. **TLC calibration is not yet performed.** Every generator parameter is still labelled `hand_tuned`. The labelling scheme exists so the distinction is visible rather than glossed over — see [`docs/data_strategy.md`](docs/data_strategy.md).
+3. **Alerting has no destination.** DAG failures write to `_ALERTS.jsonl` and go nowhere else. The callback hook exists; the transport does not.
+4. ~~Python 3.13 compatibility with dbt.~~ ✅ Resolved — dbt-core 1.12.0, dbt-duckdb 1.10.1, duckdb 1.5.5, confluent-kafka 2.15.0, pyarrow 25.0.0 resolve together on 3.13.5 with native cp313 wheels.
+5. ~~Docker daemon not running.~~ ✅ Resolved — Kafka and Airflow both run under Compose.
 
 ### Verified
 
+- **221 pytest tests pass, 5 skip** (container path-binding, documented above); `ruff` and `black` clean.
+- **167 dbt tests pass**, with financial invariants at `error` severity and quality signals at `warn`.
 - **`pip install -r requirements.txt` resolves cleanly** on Python 3.13.5 (84 packages, no conflicts).
-- **103 tests pass**; `ruff` and `black` clean.
 - **Generator output validates against the contract** — every event checked against the JSON Schemas parsed out of `event_contract.md` itself.
-- **Compose file and topic script validate** (`docker compose config`, `bash -n`).
+- **Zero loss under SIGKILL** — consumer killed mid-batch, restarted, reconciled exactly.
+- **Idempotency proven** — the same window re-run produces a byte-identical warehouse.
 
 ### M3 exit criteria — proven against a live broker
 
