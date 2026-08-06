@@ -50,13 +50,25 @@ def build_parser() -> argparse.ArgumentParser:
         default="local",
         choices=["local", "dev", "staging", "prod"],
     )
+    parser.add_argument(
+        "--sink",
+        choices=["file", "partitioned", "stdout", "kafka"],
+        default="file",
+        help="Where to send events (default: file)",
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--bootstrap-servers",
+        type=str,
+        default=None,
+        help="Kafka bootstrap servers (default: KAFKA_BOOTSTRAP_SERVERS or localhost:29092)",
+    )
     parser.add_argument(
         "--partitioned",
         action="store_true",
-        help="Write Hive-style dt=/hour= partitions instead of one file",
+        help="Deprecated alias for --sink partitioned",
     )
-    parser.add_argument("--stdout", action="store_true", help="Write events to stdout")
+    parser.add_argument("--stdout", action="store_true", help="Deprecated alias for --sink stdout")
     parser.add_argument(
         "--no-anomalies",
         action="store_true",
@@ -93,25 +105,70 @@ def main(argv: list[str] | None = None) -> int:
 
     result = generate(config)
 
+    # Legacy flags win if given, so existing invocations keep working.
+    target = args.sink
+    if args.stdout:
+        target = "stdout"
+    elif args.partitioned:
+        target = "partitioned"
+
+    written = 0
+    delivery: dict[str, object] | None = None
+
     if not args.summary_only:
-        if args.stdout:
-            sink = StdoutSink()
-        elif args.partitioned:
-            sink = PartitionedJsonlSink(DEFAULT_OUTPUT_DIR.parent / "generated" / "partitioned")
+        if target == "stdout":
+            written = StdoutSink().write(result.events)
+        elif target == "partitioned":
+            written = PartitionedJsonlSink(
+                DEFAULT_OUTPUT_DIR.parent / "generated" / "partitioned"
+            ).write(result.events)
+        elif target == "kafka":
+            from event_generator.kafka_sink import (
+                KafkaSink,
+                KafkaUnavailableError,
+                ProducerConfig,
+                broker_available,
+            )
+
+            producer_config = ProducerConfig.from_env()
+            if args.bootstrap_servers:
+                producer_config.bootstrap_servers = args.bootstrap_servers
+
+            # Probe before producing. Without this, librdkafka spends the full
+            # delivery.timeout.ms retrying and emitting connection errors before
+            # anything actionable is printed - 30 seconds of noise to say
+            # "Docker isn't running".
+            if not broker_available(producer_config.bootstrap_servers, timeout=5.0):
+                print(
+                    f"\nKafka unavailable: no broker at "
+                    f"{producer_config.bootstrap_servers}\n"
+                    "Start it with: docker compose -f docker/docker-compose.yml up -d",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                sink = KafkaSink(producer_config)
+                written = sink.write(result.events)
+                delivery = sink.report.as_dict()
+            except KafkaUnavailableError as exc:
+                # A stopped broker is an operational state, not a crash. Report
+                # it as one so the message is actionable instead of a traceback.
+                print(f"\nKafka unavailable: {exc}", file=sys.stderr)
+                return 2
         else:
-            sink = JsonlFileSink(args.out)
-        written = sink.write(result.events)
-    else:
-        written = 0
+            written = JsonlFileSink(args.out).write(result.events)
 
     summary = {
         "seed": config.seed,
         "city": config.city_code,
+        "sink": target,
         "window_start": start.isoformat().replace("+00:00", "Z"),
         "window_end": config.end_time.isoformat().replace("+00:00", "Z"),
         "events_written": written,
         **result.summary(),
     }
+    if delivery is not None:
+        summary["kafka_delivery"] = delivery
     print(json.dumps(summary, indent=2), file=sys.stderr)
     return 0
 

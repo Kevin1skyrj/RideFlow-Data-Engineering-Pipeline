@@ -223,7 +223,7 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M0 | Foundation & environment | ✅ **Complete** — venv, pinned deps, lint, pyproject |
 | M1 | Domain model & event contract | ✅ **Complete** |
 | M2 | Event generator | ✅ **Complete** — 83 tests passing |
-| M3 | Streaming infrastructure | ⬜ Not started |
+| M3 | Streaming infrastructure | ✅ **Complete** — 115 tests passing against a live broker |
 | M4 | Ingestion consumer | ⬜ Not started |
 | M5 | Warehouse & dbt foundation | ⬜ Not started |
 | M6 | Dimensional model | ⬜ Not started |
@@ -240,12 +240,25 @@ Three items must be resolved before implementation begins. They were found by in
 2. ~~**Python 3.13 compatibility with dbt.**~~ ✅ **Resolved.** Verified against the package index, not assumed: dbt-core 1.12.0, dbt-duckdb 1.10.1, duckdb 1.5.5, confluent-kafka 2.15.0 and pyarrow 25.0.0 all resolve together on Python 3.13.5 with native cp313 wheels. Pinned in [`requirements.txt`](requirements.txt).
 3. ~~**Interpreter path contains an ampersand.**~~ ✅ **Downgraded.** `py -0p` registers a 3.13 at `...\AI & ML\python.exe`, but `python` on PATH actually resolves to `C:\Users\...\anaconda3\python.exe`, which has no problematic characters. The project-local `.venv` is used regardless, so the hazard never applies.
 
-### Verified at M2
+### Verified
 
-- **Docker is still not running** — required from M3 onward, not before.
 - **`pip install -r requirements.txt` resolves cleanly** on Python 3.13.5 (84 packages, no conflicts).
-- **83 tests pass**; `ruff` and `black` are clean.
+- **103 tests pass**; `ruff` and `black` clean.
 - **Generator output validates against the contract** — every event checked against the JSON Schemas parsed out of `event_contract.md` itself.
+- **Compose file and topic script validate** (`docker compose config`, `bash -n`).
+
+### M3 exit criteria — proven against a live broker
+
+| Criterion | Evidence |
+|---|---|
+| Topics with deliberate partitioning | 12 / 6 / 3 / 3, verified from broker metadata |
+| Auto-creation disabled | Producing to an unknown topic is **rejected** |
+| Per-trip ordering | Every trip's events land on a **single partition** |
+| Events flow end to end | 1,612 generated → 1,612 delivered → 1,612 in Kafka, 0 failed |
+| **Broker restart loses no messages** | 912 / 1,108 before restart, **identical after** |
+| Replay from `earliest` | New consumer group reads the full retained log |
+
+Reproduce with `docker compose -f docker/docker-compose.yml up -d` then `pytest tests/integration -v`. Full runbook: [`docker/README.md`](docker/README.md).
 
 ### Known Design Gaps
 

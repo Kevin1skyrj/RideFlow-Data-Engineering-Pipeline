@@ -1,0 +1,109 @@
+# RideFlow streaming infrastructure (M3)
+#
+# Single-broker Kafka in KRaft mode - no ZooKeeper. See docs/kafka_design.md
+# section 9 for why: one fewer container, and the direction Kafka itself has
+# taken. Kafka 4.x removed ZooKeeper support entirely, so KRaft is the only mode.
+#
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml --profile ui up -d   # + Kafka UI
+#
+# Topics are created explicitly by the `topic-init` service. Auto-creation is
+# DISABLED deliberately: an auto-created topic gets the broker default partition
+# count (1), which would silently cap consumer scale-out at a single consumer
+# and destroy the ordering guarantees the partitioning strategy depends on.
+
+name: rideflow
+
+services:
+  broker:
+    image: apache/kafka:4.3.1
+    container_name: rideflow-broker
+    hostname: broker
+    ports:
+      # 29092 is the host-facing listener. The generator and consumer run on the
+      # host during development, so they need an advertised address that
+      # resolves outside the Compose network - "broker:9092" would not.
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: rideflow-local-cluster-0001
+
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:9093
+
+      # Single broker, so nothing can be replicated. This is a scoped local
+      # development decision: a broker disk failure loses unconsumed data.
+      # Production would be replication.factor=3 with min.insync.replicas=2
+      # (docs/kafka_design.md section 1.4).
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+
+      # No rebalance delay locally - a fresh consumer should start immediately
+      # rather than waiting out the 3s production default.
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # See the header comment. This is the single most important setting here.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days, matched to invariant T4
+      KAFKA_NUM_PARTITIONS: 12
+      KAFKA_HEAP_OPTS: "-Xmx1G -Xms512M"
+    volumes:
+      # Named volume, not tmpfs: the "broker restart loses no messages" exit
+      # criterion for M3 is only meaningful if the log survives a restart.
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      # Listing topics proves the broker is actually serving the API, not merely
+      # that the process started. A port check would pass far too early.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  topic-init:
+    image: apache/kafka:4.3.1
+    container_name: rideflow-topic-init
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ./kafka/create-topics.sh:/scripts/create-topics.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/create-topics.sh"]
+    environment:
+      BOOTSTRAP_SERVER: broker:9092
+    restart: "no"
+
+  kafka-ui:
+    # Optional. provectuslabs stopped releasing at v0.7.2 (2023) and may lag the
+    # Kafka 4.x protocol, so it is behind a profile: if it misbehaves it must not
+    # block the core stack. Topic inspection is always possible via the CLI:
+    #   docker exec rideflow-broker /opt/kafka/bin/kafka-topics.sh \
+    #     --bootstrap-server localhost:9092 --describe
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: rideflow-kafka-ui
+    profiles: ["ui"]
+    depends_on:
+      broker:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: rideflow-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    restart: unless-stopped
+
+volumes:
+  kafka-data:
+    name: rideflow-kafka-data
