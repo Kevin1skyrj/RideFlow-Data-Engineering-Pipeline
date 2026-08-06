@@ -223,8 +223,8 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M0 | Foundation & environment | ✅ **Complete** — venv, pinned deps, lint, pyproject |
 | M1 | Domain model & event contract | ✅ **Complete** |
 | M2 | Event generator | ✅ **Complete** — 83 tests passing |
-| M3 | Streaming infrastructure | ✅ **Complete** — 115 tests passing against a live broker |
-| M4 | Ingestion consumer | ⬜ Not started |
+| M3 | Streaming infrastructure | ✅ **Complete** — verified against a live broker |
+| M4 | Ingestion consumer | ✅ **Complete** — 156 tests, zero loss proven under SIGKILL |
 | M5 | Warehouse & dbt foundation | ⬜ Not started |
 | M6 | Dimensional model | ⬜ Not started |
 | M7 | Data quality | ⬜ Not started |
@@ -259,6 +259,29 @@ Three items must be resolved before implementation begins. They were found by in
 | Replay from `earliest` | New consumer group reads the full retained log |
 
 Reproduce with `docker compose -f docker/docker-compose.yml up -d` then `pytest tests/integration -v`. Full runbook: [`docker/README.md`](docker/README.md).
+
+### M4 exit criteria — proven
+
+| Criterion | Target | Measured |
+|---|---|---|
+| Sustained ingestion | ≥ 1,000 events/sec | **4,368 events/sec** |
+| Reconciliation (N1) | polled = landed + rejected + duplicates | **holds on every run** |
+| Malformed → DLQ with reasons | all rejected, none dropped | `MALFORMED_JSON`, `SCHEMA_VIOLATION` |
+| Poison message doesn't stall a partition | stream continues | verified |
+| **SIGKILL mid-stream → zero loss** | 0 missing | **17,880 / 17,880 recovered** |
+
+The crash test kills the consumer with `SIGKILL` — no flush, no commit — then resumes with the same group and compares every event in Kafka against the landing zone:
+
+```
+kafka valid (distinct ids) : 17880
+parquet distinct event_ids : 17880
+MISSING (data loss)        : 0
+parquet duplicate rows     : 13   <- the uncommitted batch, redelivered
+```
+
+Those 13 duplicates are the **expected signature of at-least-once delivery**, not a defect: the batch in flight when the process died was never committed, so Kafka redelivered it. Staging removes them deterministically.
+
+> **Note on throughput:** the rate is measured from first to last message, not wall clock. Wall clock includes idle polling and shutdown, which understates it — the first measurement of this consumer reported 297 ev/s for work actually done at ~1,300 ev/s.
 
 ### Known Design Gaps
 

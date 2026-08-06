@@ -303,6 +303,72 @@ Plot the aggregate statistics *before* writing the unit tests. I wrote 72 passin
 
 ---
 
+## 2026-08-06 — M3/M4 — Kafka, and the ingestion consumer
+
+**Time spent:** ~7h
+
+### What I learned
+
+- **A failing test is a hypothesis, not a verdict.** An integration test reported "lost 180 of 240 events". Before changing any producer code I counted what was actually in Kafka: 1,010 messages, all present. The producer was fine; the *test's consumer* was racy. Had I trusted the failure, I would have "fixed" working code and broken it.
+
+- **`subscribe()` is asynchronous.** It returns immediately while the group join happens in the background. One `poll()` does not guarantee assignment. Combined with `auto.offset.reset=latest`, anything produced before assignment completes lands behind the consumer's start offset and is invisible forever. Waiting on `assignment()` is the deterministic fix; sleeping is a guess.
+
+- **After a hard crash, a resuming consumer waits out `session.timeout.ms`.** The broker still considers the SIGKILLed member alive for 45 seconds, so the new consumer joins the group but receives **no partitions** until the dead member's session expires. My first crash test used a 12-second idle timeout and reported 10,662 missing events — which looked exactly like catastrophic data loss and was pure impatience.
+
+- **Measure throughput over the processing window, not wall clock.** My first number was 297 ev/s. The real rate was 4,368 ev/s; the difference was a 12-second idle timeout being counted as processing time. A performance number is only as good as its denominator.
+
+- **Duplicates after a crash are the correct outcome, not a bug.** 13 duplicate rows appeared after the SIGKILL test. That is the uncommitted batch being redelivered — exactly what at-least-once means. A pipeline that showed *zero* duplicates there would be more suspicious, because it would suggest offsets were committed before the write.
+
+- **Commit the offset for rejected messages too.** Otherwise one unparseable byte creates a poison-pill loop: the consumer retries the same message forever and the partition never advances. The message is quarantined in the DLQ, not discarded — nothing is lost, and the stream keeps moving.
+
+- **Write to a temp name, then rename.** A crash mid-write would otherwise leave a truncated `.parquet` in the landing zone. A *corrupt* file in the system of record is far worse than a missing one, because the missing one just gets redelivered.
+
+- **Declare the Arrow schema explicitly.** Inference reads types from the first batch, so a batch where every `causation_id` happened to be null would infer a null-typed column and the next batch would fail to append.
+
+- **Git Bash silently rewrites Unix-looking paths.** `/opt/kafka/bin/...` becomes `C:/Program Files/Git/opt/kafka/bin/...` before Docker sees it. This produced a false "0 messages" reading that briefly looked like total data loss. `MSYS_NO_PATHCONV=1` is required.
+
+- **`&` backgrounds the whole `&&` chain.** Variables assigned earlier in the chain end up in a subshell, so a later command sees them as empty. My first crash test silently used the *wrong consumer group* and re-read the entire topic instead of resuming — a test that passed while proving nothing.
+
+### Problems faced
+
+| Problem | Root cause | Resolution | Time lost |
+|---|---|---|---|
+| "lost 180 of 240 events" | Test consumer not yet assigned partitions | Wait on `assignment()` before producing | 35 min |
+| Crash test showed 10,662 missing | Resume gave up before `session.timeout.ms` expired | Idle timeout raised above 45s | 40 min |
+| Throughput reported 297 ev/s | Idle time counted as processing time | Separate `processing_sec` from wall clock | 15 min |
+| Crash test used the wrong group | `&` scoped variables into a subshell | Moved to a script file | 20 min |
+| `GetOffsetShell` not found | Removed in Kafka 4.x | Use `kafka-get-offsets.sh` | 10 min |
+| Container path mangled | Git Bash MSYS conversion | `MSYS_NO_PATHCONV=1` | 15 min |
+
+### The pattern in all of this
+
+Five of the six problems above **looked like data loss and were not**. Every one was resolved by measuring the system directly — counting messages in Kafka, reading committed offsets, comparing distinct IDs — rather than reasoning from the symptom.
+
+The one time I did reason from the symptom (assuming the round-trip failure was a producer bug), I was wrong.
+
+**Check the data before changing the code.**
+
+### Decisions made
+
+| Decision | Alternatives considered | Why this one | Reversible? |
+|---|---|---|---|
+| Consumer parses schemas from `event_contract.md` | Generate `.json` files at build time | One copy means drift is impossible, not merely detectable. Cost: the markdown must ship with the consumer. | Medium |
+| `payload_json` as a string column | Flatten into typed columns | Nine event types, nine shapes - flattening gives a very wide, very sparse table. dbt extracts types where the shape is known. | Medium |
+| Partition on `ingested_at` | Partition on `event_timestamp` | Arrival time is monotonic, so partitions stay append-only. Event time would need writes into closed partitions. | Hard |
+| Batch flush on size **or** age | Size only | Size alone stalls forever in low traffic; time alone makes tiny files under load | Easy |
+| Kafka coordinates in every row | Omit them | Makes any warehouse row traceable to the exact message that produced it | Easy |
+
+### What I'd do differently
+
+Write the *verification* script before the crash test. I ran the crash test three times before it was measuring anything real — twice it silently proved nothing (wrong group, premature timeout) and once it reported a catastrophe that did not exist.
+
+### Open questions
+
+- Consumer-side dedup caught 2,854 duplicates in one run, but only because the whole topic fitted in a single batch. With realistic batch sizes it will catch far fewer. That is fine — staging is authoritative — but the metric will look worse and should not be mistaken for a regression.
+- `session.timeout.ms=45000` makes crash recovery slow. Production-reasonable, but worth revisiting if fast failover matters more than avoiding spurious rebalances.
+
+---
+
 ## Running list of things I got wrong
 
 Kept deliberately. **"Tell me about a mistake you made"** is a standard interview question, and a specific answer with a concrete fix beats a vague one every time.
