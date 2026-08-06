@@ -17,6 +17,21 @@
          of EVENTS, invisible at trip grain.
       3. Future re-modelling - a new mart can be built from atomic events
          without re-reading the landing zone.
+
+    ── This table DELIBERATELY contains events that fail business assertions ──
+    It depends only on stg_trip_events, so it builds before the financial tests
+    on stg_ride_completed run. Events that violate F1/F2 therefore land here
+    even when the build fails.
+
+    That is correct, and it is the point of an audit table: it records what
+    ARRIVED, not what was accepted. Verified by injecting two schema-valid but
+    financially corrupt trips - all 10 of their events landed here, while
+    fct_trips and fct_payments received ZERO of them, because dbt skipped every
+    downstream model once the assertions failed.
+
+    So the accurate claim is: bad data never reaches the BUSINESS marts. It
+    does reach this one, on purpose, and consumers must join to fct_trips (and
+    filter is_quarantined) rather than aggregating measures from here.
 */
 
 with events as (

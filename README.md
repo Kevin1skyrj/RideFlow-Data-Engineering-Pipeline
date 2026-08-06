@@ -226,8 +226,8 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M3 | Streaming infrastructure | ✅ **Complete** — verified against a live broker |
 | M4 | Ingestion consumer | ✅ **Complete** — zero loss proven under SIGKILL |
 | M5 | Warehouse & dbt foundation | ✅ **Complete** — staging layer, exact reconciliation |
-| M6 | Dimensional model | ✅ **Complete** — 19 models, 161 dbt tests, idempotency proven |
-| M7 | Data quality | ⬜ Not started |
+| M6 | Dimensional model | ✅ **Complete** — 19 models, idempotency proven |
+| M7 | Data quality | ✅ **Complete** — 167 dbt tests, gate proven by chaos injection |
 | M8 | Orchestration | ⬜ Not started |
 | M9 | Analytics & dashboard | ⬜ Not started |
 | M10 | Hardening & documentation | ⬜ Not started |
@@ -319,6 +319,29 @@ fct_trip_events|15089|e77d40a6c8da30c8
 **Local time keys work**: UTC hour 2 → local hour 8, so the Bengaluru morning peak lands at 08–09 IST rather than 02–03 UTC.
 
 **Financial reconciliation is exact.** For trips holding both a completion and a payment: `sum(total_fare) - sum(trip_fare) = 0.00`. The ₹5,712.98 apparent gap traces to exactly 11 payments whose `RideCompleted` was quarantined in the DLQ.
+
+### M7 exit criteria — proven by chaos injection
+
+Two **schema-valid** trips were injected into the landing zone — every required field present, every type correct, so they pass ingestion validation cleanly — but with fares that violate the financial invariants. Result:
+
+```
+assert_fare_components_sum_to_total .... FAIL 1     <- F1 caught
+assert_payout_split_reconciles ......... FAIL 2     <- F2 caught
+int_trips_assembled .................... SKIP
+fct_trips .............................. SKIP       <- mart never built
+```
+
+| Check | Result |
+|---|---|
+| Corrupt trips reaching `fct_trips` | **0** |
+| Corrupt trips reaching `fct_payments` | **0** |
+| Corrupt events reaching `fct_trip_events` | **10 — by design** |
+
+> **Precise claim:** bad data never reaches the **business** marts. It *does* reach `fct_trip_events`, deliberately — that table is the audit record of what **arrived**, not what was accepted. Consumers aggregate from `fct_trips` (filtered on `is_quarantined = false`), never from the atomic event table.
+
+**Quarantine, never discard.** 35 trips are quarantined — 12 missing their `RideRequested`, 23 with invalid sequences — and every one carries a stated reason in `quarantined_trips`. They stay in `fct_trips` so that when a missing event arrives late, the next run reassembles them and they leave quarantine on their own.
+
+`fct_pipeline_quality` tracks orphan rate, sequence-invalid rate, late arrivals, clock skew, unknown-key rate, and **unexplained revenue** (₹5,601 of payments whose trip cannot be described) — as trends, not gates.
 
 ### Known Design Gaps
 

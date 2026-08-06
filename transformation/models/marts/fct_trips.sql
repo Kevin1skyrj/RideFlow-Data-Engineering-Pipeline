@@ -218,6 +218,18 @@ select
     is_sequence_valid,
     has_request_event,
 
+    /*
+        Quarantine flag. Business metrics must filter on
+        `is_quarantined = false`.
+
+        A quarantined trip is RETAINED, not dropped. If its missing event
+        arrives late, the next run reassembles it and it leaves quarantine on
+        its own. Dropping it would make recovery impossible - the evidence it
+        existed would be gone. `quarantined_trips` lists them with reasons, so
+        the exclusion is inspectable rather than invisible.
+    */
+    (not has_request_event or not is_sequence_valid)   as is_quarantined,
+
     -- ── Technical ───────────────────────────────────────────────────────
     '{{ invocation_id }}'                              as dbt_invocation_id,
     current_timestamp                                  as dbt_loaded_at

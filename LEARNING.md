@@ -480,6 +480,45 @@ Write the guard before the proof. Every one of the three false greens would have
 
 ---
 
+## 2026-08-06 — M7 — Data quality gate
+
+**Time spent:** ~2h
+
+### What I learned
+
+- **The gate held better than I expected, and for a structural reason.** I assumed dbt would build the mart and *then* test it, meaning bad data would transiently land in `fct_trips`. It didn't: because the financial assertions live on `stg_ride_completed`, and `dbt build` is DAG-aware, `int_trips_assembled` and `fct_trips` were **skipped entirely**. Putting assertions at the *staging* layer rather than the mart layer is what makes "never reaches the mart" literally true rather than approximately true.
+
+- **But my claim was still too broad.** 10 corrupt events *did* reach `fct_trip_events`, because that model depends only on `stg_trip_events` and built before the failing tests ran. That is correct — an audit table records what **arrived**, not what was accepted — but "bad data never reaches a mart" was imprecise. The accurate statement is "never reaches the **business** marts", and the distinction is now written into the model.
+
+- **Inject data that passes the *previous* layer's validation.** The chaos events were schema-perfect: every required field, every type correct. They would sail through ingestion. Only the warehouse assertions catch them. Injecting malformed JSON would have proven nothing about M7 — it would have tested M4 again.
+
+- **A quality metric can hide the defect it exists to measure.** My first `fct_pipeline_quality` grouped trips by `requested_at` and filtered out nulls. Orphaned trips are precisely the ones with no `requested_at`, so it reported **0 orphans while 12 existed**. Fixed by coalescing across the lifecycle, and there is now a regression test comparing the reported count against the actual one.
+
+- **Severity is a design decision, not a default.** Two tests are deliberately `warn`: the orphaned `DriverOffline`, and payments without a completion. Both are the *expected consequence* of the DLQ working. Erroring on them would mean the DLQ can never be exercised without failing the build — a gate punishing the pipeline for behaving correctly. Financial invariants still block.
+
+### Problems faced
+
+| Problem | Root cause | Resolution | Time lost |
+|---|---|---|---|
+| `orphaned_trips` reported 0 while 12 existed | Grouped on `requested_at`, which orphans lack | Coalesce across lifecycle timestamps | 15 min |
+| Claimed "never reaches a mart" | `fct_trip_events` legitimately receives it | Narrowed the claim to business marts, documented why | 10 min |
+
+### Decisions made
+
+| Decision | Alternatives considered | Why this one | Reversible? |
+|---|---|---|---|
+| Financial assertions on staging, not marts | Assert on marts | Staging assertions make dbt skip the marts entirely, so bad data never materialises there | Medium |
+| Quarantine flag + detail view | Delete invalid rows | A deleted trip cannot recover when its missing event arrives; a quarantined one leaves quarantine on its own | Easy |
+| S3 violations warn, not error | Error | They are DLQ consequences, not defects. But tracked as `unexplained_revenue` so they cannot be ignored. | Easy |
+| `fct_trip_events` keeps invalid events | Filter them out | It is the audit record of what arrived. Filtering would destroy the evidence needed to diagnose. | Easy |
+
+### Open questions
+
+- The 11 payments without completions represent ₹5,601 of collected money the warehouse cannot describe. Currently tracked, not blocked. If that ratio grew, at what threshold should it become an error?
+- `fct_trip_events` is not covered by the financial assertions by design. Worth adding a *separate*, warn-level assertion there so corrupt events are visible in the audit table rather than merely present.
+
+---
+
 ## Running list of things I got wrong
 
 Kept deliberately. **"Tell me about a mistake you made"** is a standard interview question, and a specific answer with a concrete fix beats a vague one every time.

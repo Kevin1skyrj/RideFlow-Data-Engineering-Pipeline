@@ -96,9 +96,7 @@ def table_counts(path: Path | None = None) -> dict[str, int]:
         counts: dict[str, int] = {}
         for schema, name in tables:
             qualified = f"{schema}.{name}"
-            counts[qualified] = connection.sql(
-                f"SELECT count(*) FROM {qualified}"
-            ).fetchone()[0]
+            counts[qualified] = connection.sql(f"SELECT count(*) FROM {qualified}").fetchone()[0]
         return counts
 
 
