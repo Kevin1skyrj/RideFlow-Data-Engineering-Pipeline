@@ -371,6 +371,39 @@ The run publishes `_LAST_SUCCESSFUL_RUN.json` with live reconciliation — 17,89
 
 > **Path binding, stated plainly:** dbt bakes the landing-zone path into the *staging views*, so when Airflow builds the warehouse those views are container-bound. The **marts are tables**, carry no path dependency, and are what pytest, the host and Power BI actually read.
 
+#### Backfill — the M8 exit criterion
+
+Trigger the same DAG with a run configuration:
+
+```json
+{"backfill_start": "2026-07-15", "backfill_end": "2026-08-14"}
+{"backfill_start": "...", "backfill_end": "...", "full_refresh": true}
+```
+
+**One code path, two modes.** With no config it is an ordinary incremental run, so the backfill path cannot drift out of sync with the one that actually runs hourly. The compiled SQL proves the window is genuinely applied, not silently ignored:
+
+| Mode | Compiled predicate |
+|---|---|
+| Backfill | `ingested_at >= '2026-07-15' AND ingested_at < '2026-08-14'` |
+| Normal | `ingested_at >= (max(dbt_loaded_at) - interval 48 hour)` |
+
+A 30-day backfill ran **unattended, 9/9 tasks green**, and left the marts **byte-identical**:
+
+```
+BEFORE  fct_trips|2720|af42e24191925cb4   AFTER  fct_trips|2720|af42e24191925cb4
+        fct_payments|2358|cb1ad27f5fb55f80        fct_payments|2358|cb1ad27f5fb55f80
+```
+
+That is `delete+insert` doing its job — a backfill **replaces** its window rather than appending to it. An `append` strategy would have double-counted every row in the range.
+
+Supplying only one bound is rejected at compile time rather than silently processing the wrong range:
+
+```
+Compilation Error: backfill_start and backfill_end must be supplied together.
+```
+
+**Alerting** is wired via `on_failure_callback`, graded by severity — `dbt_test` and `reconciliation_check` are CRITICAL (wrong numbers), everything else HIGH. Alerts append to `data/processed/_ALERTS.jsonl` so they survive container restarts and log rotation. It writes structured records rather than sending to a channel; wiring a real destination is one function call, but inventing a webhook that doesn't exist would make the alerting *look* implemented when it isn't.
+
 ### Known Design Gaps
 
 Documented deliberately rather than discovered later:

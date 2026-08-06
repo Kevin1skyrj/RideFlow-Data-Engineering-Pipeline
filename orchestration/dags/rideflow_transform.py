@@ -41,6 +41,31 @@ MART_EXPORT = Path(os.environ.get("RIDEFLOW_MART_EXPORT", "/opt/rideflow/data/pr
 DBT = f"cd {PROJECT_DIR} && {DBT_BIN}"
 DBT_FLAGS = f"--profiles-dir {PROFILES_DIR} --project-dir {PROJECT_DIR}"
 
+# ── Backfill, driven by DAG run configuration ────────────────────────────────
+#
+#   Trigger DAG w/ config:
+#     {"backfill_start": "2026-07-15", "backfill_end": "2026-08-14"}
+#     {"backfill_start": "...", "backfill_end": "...", "full_refresh": true}
+#
+# These are Airflow Jinja fragments rendered at TASK RUNTIME, not Python
+# f-strings - so they are concatenated rather than interpolated, or the braces
+# would be eaten by Python's own formatting.
+#
+# An empty conf renders to an empty string, so a normal scheduled run is
+# completely unaffected. That is deliberate: the backfill path must not be a
+# separate DAG that can drift out of sync with the one that actually runs
+# hourly. One code path, two modes.
+DBT_BACKFILL_VARS = (
+    "{% if dag_run and dag_run.conf.get('backfill_start') %}"
+    '--vars \'{"backfill_start": "{{ dag_run.conf[\'backfill_start\'] }}", '
+    '"backfill_end": "{{ dag_run.conf[\'backfill_end\'] }}"}\''
+    "{% endif %}"
+)
+
+# full_refresh rebuilds from scratch, discarding incremental state. Needed when
+# a column is added or a model's logic changes in a way history must reflect.
+DBT_FULL_REFRESH = "{% if dag_run and dag_run.conf.get('full_refresh') %}--full-refresh{% endif %}"
+
 FRESHNESS_THRESHOLD_HOURS = 6
 
 MARTS = [
@@ -166,6 +191,55 @@ def reconciliation_check(**context) -> dict:
         connection.close()
 
 
+CRITICAL_TASKS = {"dbt_test", "reconciliation_check"}
+
+
+def alert_on_failure(context) -> None:
+    """Route a failure by severity.
+
+    Severity is GRADED on purpose. Ungraded alerting is ignored alerting: if a
+    docs-generation warning pages someone at 2 a.m., the next genuine financial
+    alert gets muted (airflow_design.md 6.2).
+
+      CRITICAL - dbt_test / reconciliation_check. Wrong numbers, or numbers that
+                 do not agree across layers. Would page.
+      HIGH     - any other task failure. Same-day attention.
+
+    This writes a structured record rather than sending anything. Wiring a real
+    channel is one function call away, but inventing a Slack webhook that does
+    not exist would make the alerting look implemented when it is not.
+    """
+    task_instance = context.get("task_instance")
+    task_id = getattr(task_instance, "task_id", "unknown")
+    severity = "CRITICAL" if task_id in CRITICAL_TASKS else "HIGH"
+
+    alert = {
+        "severity": severity,
+        "dag_id": context.get("dag").dag_id if context.get("dag") else "unknown",
+        "task_id": task_id,
+        "run_id": context.get("run_id"),
+        "try_number": getattr(task_instance, "try_number", None),
+        "exception": str(context.get("exception"))[:500],
+        "raised_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "reason": (
+            "data quality or reconciliation failure - published numbers may be wrong"
+            if severity == "CRITICAL"
+            else "pipeline task failure"
+        ),
+    }
+
+    print(f"[{severity} ALERT] " + json.dumps(alert))
+
+    # Append to a durable log so a failure is inspectable after the container
+    # restarts and Airflow's own task logs have rotated away.
+    try:
+        MART_EXPORT.mkdir(parents=True, exist_ok=True)
+        with (MART_EXPORT / "_ALERTS.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(alert) + "\n")
+    except OSError as exc:  # never let alerting failure mask the real failure
+        print(f"could not persist alert: {exc}")
+
+
 def publish_success_marker(**context) -> dict:
     """Record that this run completed and published.
 
@@ -214,6 +288,9 @@ default_args = {
     # every 60s can prevent the recovery it is waiting for.
     "retry_exponential_backoff": True,
     "max_retry_delay": timedelta(minutes=10),
+    # Fires only after retries are exhausted, so a transient blip that recovers
+    # on attempt 2 never raises an alert.
+    "on_failure_callback": alert_on_failure,
 }
 
 with DAG(
@@ -267,13 +344,18 @@ with DAG(
 
     dbt_run = BashOperator(
         task_id="dbt_run",
-        bash_command=f"{DBT} run {DBT_FLAGS}",
+        bash_command=f"{DBT} run {DBT_FLAGS} " + DBT_BACKFILL_VARS + " " + DBT_FULL_REFRESH,
         retries=3,
+        doc_md=(
+            "Honours `backfill_start` / `backfill_end` / `full_refresh` from the "
+            "DAG run configuration. With no config it is an ordinary "
+            "incremental run - one code path, two modes."
+        ),
     )
 
     dbt_test = BashOperator(
         task_id="dbt_test",
-        bash_command=f"{DBT} test {DBT_FLAGS}",
+        bash_command=f"{DBT} test {DBT_FLAGS} " + DBT_BACKFILL_VARS,
         # ── ZERO retries, deliberately ──────────────────────────────────────
         # A data-quality failure is DETERMINISTIC: the same data tested again
         # fails again. Retrying burns the budget on a guaranteed failure and

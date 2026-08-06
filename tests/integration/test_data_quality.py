@@ -135,8 +135,7 @@ class TestBusinessMartsAreProtected:
         business mart after cleanup."""
         for table, column in [("fct_trips", "requested_at"), ("fct_payments", "paid_at")]:
             leaked = con.sql(
-                f"SELECT count(*) FROM main.{table} "
-                f"WHERE {column} >= TIMESTAMPTZ '2099-01-01'"
+                f"SELECT count(*) FROM main.{table} " f"WHERE {column} >= TIMESTAMPTZ '2099-01-01'"
             ).fetchone()[0]
             assert leaked == 0, f"{leaked} corrupt rows survive in {table}"
 

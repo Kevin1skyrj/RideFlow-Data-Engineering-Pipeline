@@ -565,10 +565,26 @@ Every one of these failed in a way that pointed somewhere other than the cause: 
 | Fixed JWT/Fernet literals | Generate at runtime | Local-only stack with no real credentials; a deployed one would inject from a secret store | Easy |
 | `dbt_docs_generate` uses `all_done` | Block on it | Documentation failing must never block publication | Easy |
 
+### Closing out M8 (same day, +1h)
+
+- **Backfill was designed but never implemented.** `airflow_design.md` §5 described the parameterised interface in detail and the DAG had none of it. Writing a design document does not make the thing exist - and because the doc read as authoritative, it was easy to believe the feature was there.
+
+- **One code path, two modes.** The backfill window is a dbt var consumed by the same `incremental_window()` macro the hourly run uses; with no config it renders the ordinary high-water-mark predicate. A separate "backfill DAG" would have been simpler to write and would have drifted out of sync with the real one within weeks.
+
+- **Prove the mode actually changed by reading the COMPILED SQL.** A backfill that silently ignores its window still succeeds, still reports green, and still produces plausible marts. The compiled output is the only place the difference is visible:
+  - backfill: `ingested_at >= '2026-07-15' AND ingested_at < '2026-08-14'`
+  - normal:   `ingested_at >= (max(dbt_loaded_at) - interval 48 hour)`
+
+- **Half a window must be an error, not a default.** Supplying only `backfill_start` now raises a compile error. Silently falling back to the high-water mark would process the wrong range while appearing to succeed - the worst combination.
+
+- **Byte-identical marts after a 30-day backfill is the real proof.** It shows `delete+insert` REPLACING the window rather than appending. An `append` strategy would have doubled every row in range, and nothing else in the pipeline would have complained.
+
+- **My verification script lied again - in the other direction this time.** It printed `FAILED: backfill DAG run did not succeed (state=)` while all 9 tasks were green. The `awk -F'|' '{print $3}'` state parser matched nothing. Previous false-greens said "pass" when nothing ran; this was a false RED. Both come from the same root cause: trusting a fragile parse of human-readable CLI output instead of asserting on something structured.
+
 ### Open questions
 
-- Backfill is parameterised in the DAG design but has not been exercised over a 30-day range. The M8 exit criterion is only partly met until it is.
-- Alerting is currently log-only. `on_failure_callback` routing is designed in `airflow_design.md` but not wired.
+- Alerting writes structured records to `_ALERTS.jsonl` but sends nothing. Deliberate - a fabricated webhook would make it look wired when it is not - but it is not alerting until a destination exists.
+- Airflow's own `airflow backfill` command (creating DAG runs for past intervals) is untested; only the dbt-level window is proven.
 
 ---
 

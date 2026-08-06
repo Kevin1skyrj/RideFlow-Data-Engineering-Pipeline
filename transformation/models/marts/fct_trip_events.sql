@@ -39,11 +39,7 @@ with events as (
     select * from {{ ref('stg_trip_events') }}
 
     {% if is_incremental() %}
-    where ingested_at >= (
-        select coalesce(max(dbt_loaded_at), timestamptz '1970-01-01')
-             - interval {{ var('incremental_lookback_hours') }} hour
-        from {{ this }}
-    )
+    where {{ incremental_window('ingested_at') }}
     {% endif %}
 
 ),

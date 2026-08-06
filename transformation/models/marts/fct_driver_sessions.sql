@@ -24,14 +24,11 @@ with sessions as (
     select * from {{ ref('int_driver_sessions') }}
 
     {% if is_incremental() %}
-    -- Open sessions are always reprocessed: one that is open today may close
-    -- tomorrow, and a plain high-water mark would freeze it open forever.
-    where online_at >= (
-        select coalesce(max(dbt_loaded_at), timestamptz '1970-01-01')
-             - interval {{ var('incremental_lookback_hours') }} hour
-        from {{ this }}
-    )
-    or session_id in (select session_id from {{ this }} where offline_at is null)
+    -- Open sessions are ALWAYS reprocessed regardless of the window: one that
+    -- is open today may close tomorrow, and a plain high-water mark would
+    -- freeze it open forever.
+    where {{ incremental_window('online_at') }}
+       or session_id in (select session_id from {{ this }} where offline_at is null)
     {% endif %}
 
 ),

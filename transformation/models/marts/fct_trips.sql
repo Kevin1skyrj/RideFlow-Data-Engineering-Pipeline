@@ -45,16 +45,13 @@ with trips as (
     select * from {{ ref('int_trips_assembled') }}
 
     {% if is_incremental() %}
-    -- Reprocess a window wider than the maximum tolerated lateness, so events
-    -- that arrived after the last run are picked up and their trips revised.
+    -- Scoped by trip rather than by the trip's own timestamp: a trip is
+    -- reprocessed when ANY of its events arrived in the window. A late
+    -- RideCompleted must revise its trip even though requested_at is old.
     where trip_id in (
         select correlation_id
         from {{ ref('stg_trip_events') }}
-        where ingested_at >= (
-            select coalesce(max(dbt_loaded_at), timestamptz '1970-01-01')
-                 - interval {{ var('incremental_lookback_hours') }} hour
-            from {{ this }}
-        )
+        where {{ incremental_window('ingested_at') }}
     )
     {% endif %}
 
