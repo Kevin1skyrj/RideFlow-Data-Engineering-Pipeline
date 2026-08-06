@@ -224,8 +224,8 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M1 | Domain model & event contract | ✅ **Complete** |
 | M2 | Event generator | ✅ **Complete** — 83 tests passing |
 | M3 | Streaming infrastructure | ✅ **Complete** — verified against a live broker |
-| M4 | Ingestion consumer | ✅ **Complete** — 156 tests, zero loss proven under SIGKILL |
-| M5 | Warehouse & dbt foundation | ⬜ Not started |
+| M4 | Ingestion consumer | ✅ **Complete** — zero loss proven under SIGKILL |
+| M5 | Warehouse & dbt foundation | ✅ **Complete** — 11 models, 92 dbt tests, exact reconciliation |
 | M6 | Dimensional model | ⬜ Not started |
 | M7 | Data quality | ⬜ Not started |
 | M8 | Orchestration | ⬜ Not started |
@@ -282,6 +282,22 @@ parquet duplicate rows     : 13   <- the uncommitted batch, redelivered
 Those 13 duplicates are the **expected signature of at-least-once delivery**, not a defect: the batch in flight when the process died was never committed, so Kafka redelivered it. Staging removes them deterministically.
 
 > **Note on throughput:** the rate is measured from first to last message, not wall clock. Wall clock includes idle polling and shutdown, which understates it — the first measurement of this consumer reported 297 ev/s for work actually done at ~1,300 ev/s.
+
+### M5 exit criteria — proven
+
+| Criterion | Result |
+|---|---|
+| `dbt run` passes | **11 models** built |
+| `dbt test` passes | **91 pass, 1 warn, 0 errors** across 92 tests |
+| Source freshness | both sources PASS |
+| **Staging reconciles with landed events** | **15,089 + 2,791 = 17,880** = distinct landed events |
+
+Deduplication is verifiable rather than assumed: the landing zone holds 17,893 rows and 17,880 distinct event IDs — the 13 extra are the crash-test redeliveries — and staging contains exactly 17,880. A test also asserts the **earliest** arrival was kept, which is what makes re-runs byte-identical.
+
+```bash
+cd transformation
+dbt seed && dbt run && dbt test && dbt source freshness
+```
 
 ### Known Design Gaps
 

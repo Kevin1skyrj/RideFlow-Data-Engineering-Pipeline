@@ -1,0 +1,102 @@
+name: rideflow
+version: "0.1.0"
+config-version: 2
+
+profile: rideflow
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # Path to the immutable landing zone.
+  #
+  # SHOULD BE ABSOLUTE. dbt bakes this string into the staging VIEW definitions,
+  # and DuckDB resolves relative paths against the working directory of whoever
+  # queries the view - not against the dbt project. With a relative default the
+  # warehouse only works when queried from transformation/, and fails with
+  # "No files found that match the pattern" from anywhere else, including
+  # Power BI and the DuckDB CLI.
+  #
+  # warehouse/connection.py exports an absolute RIDEFLOW_LANDING_ZONE, which
+  # _sources.yml prefers over this value. This relative fallback exists only so
+  # a bare `dbt run` from transformation/ still works during development.
+  #
+  # NOTE: this is a PLAIN string, not jinja. `{{ env_var(...) }}` here does not
+  # resolve as expected - the value is substituted textually into the source
+  # definition and one level of braces is consumed, producing a SQL parse error.
+  # The env_var lookup belongs where the value is used, in _sources.yml.
+  landing_zone: "../data/raw"
+
+  # Marts filter to a single environment. Without this, a dev or staging event
+  # that reached the same landing zone would silently contaminate production
+  # numbers (event_contract.md 3.1).
+  target_environment: "local"
+
+  # Lookback window for incremental models, in hours. Must exceed the maximum
+  # tolerated lateness or late-arriving events are missed permanently
+  # (etl_design.md 6.2). Used from M6 onward.
+  incremental_lookback_hours: 48
+
+models:
+  rideflow:
+    staging:
+      # Views: cheap, always fresh, no storage. Staging is recomputed from the
+      # immutable landing zone on every run, which is what makes the pass-2
+      # deduplication authoritative rather than best-effort.
+      +materialized: view
+      +schema: staging
+
+seeds:
+  rideflow:
+    +schema: reference
+    # Explicit types rather than inference. A seed column that happened to hold
+    # only integers in one release would infer INTEGER and then break when a
+    # decimal arrived.
+    dim_city:
+      +column_types:
+        commission_pct: decimal(5,2)
+        base_fare: decimal(10,2)
+        per_km_rate: decimal(10,2)
+        per_min_rate: decimal(10,2)
+        airport_fee: decimal(10,2)
+        tax_pct: decimal(5,2)
+        max_surge_multiplier: decimal(4,2)
+        center_lat: decimal(9,6)
+        center_lon: decimal(9,6)
+    dim_zone:
+      +column_types:
+        centroid_lat: decimal(9,6)
+        centroid_lon: decimal(9,6)
+    dim_vehicle_type:
+      +column_types:
+        base_fare_multiplier: decimal(4,2)
+        per_km_multiplier: decimal(4,2)
+        min_driver_rating: decimal(3,2)
+    dim_customer_tier:
+      +column_types:
+        min_lifetime_spend: decimal(12,2)
+        discount_pct: decimal(5,2)
+    dim_payment_method:
+      +column_types:
+        gateway_fee_pct: decimal(5,2)
+        failure_rate_baseline_pct: decimal(5,2)
+    dim_weather:
+      +column_types:
+        demand_impact_factor: decimal(4,2)
+        supply_impact_factor: decimal(4,2)
+        avg_speed_reduction_pct: decimal(5,2)
+    dim_traffic_level:
+      +column_types:
+        speed_factor: decimal(4,2)
+        eta_multiplier: decimal(4,2)
+        avg_speed_kmh: decimal(5,2)
+
+flags:
+  send_anonymous_usage_stats: false

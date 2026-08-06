@@ -1,0 +1,60 @@
+version: 2
+
+sources:
+  - name: landing
+    description: >
+      The immutable Parquet landing zone written by the ingestion consumer.
+      This is the system of record: append-only, never mutated, and the one
+      component the platform cannot rebuild from something else. Every model in
+      the warehouse ultimately derives from it, so the entire warehouse is
+      reconstructible by deleting the DuckDB file and re-running dbt.
+
+    # `ingested_at` is the freshness field, not `event_timestamp`. Arrival time
+    # is the only monotonic clock available: a device with a wrong clock could
+    # otherwise make the source look stale (or suspiciously fresh) for reasons
+    # having nothing to do with the pipeline.
+    loaded_at_field: ingested_at
+    freshness:
+      warn_after: { count: 2, period: hour }
+      error_after: { count: 6, period: hour }
+
+    tables:
+      - name: trips
+        description: >
+          Trip lifecycle events - the seven trip event types, keyed by trip_id.
+        meta:
+          # env_var is resolved HERE rather than via a var default in
+          # dbt_project.yml: jinja in a var value is substituted textually and
+          # loses a level of braces, producing a SQL parse error.
+          external_location: >
+            read_parquet('{{ env_var("RIDEFLOW_LANDING_ZONE", var("landing_zone")) }}/topic=trips/**/*.parquet',
+                         hive_partitioning = true,
+                         union_by_name = true)
+        columns:
+          - name: event_id
+            description: Deduplication key. NOT unique here - the landing zone is append-only and retains redelivered copies.
+          - name: ingested_at
+            description: When the consumer received the event. Drives partitioning and incremental loads.
+          - name: event_timestamp
+            description: When the event happened on the device. Drives business metrics.
+          - name: payload_json
+            description: The original event payload, unmodified.
+          - name: kafka_offset
+            description: Source offset, for tracing a warehouse row back to the exact message.
+
+      - name: presence
+        description: >
+          Driver presence events - DriverOnline and DriverOffline, keyed by
+          driver_id. A separate topic and therefore a separate source: presence
+          events have a different grain and a different partitioning key from
+          trip events (event_contract.md 3.3).
+        meta:
+          external_location: >
+            read_parquet('{{ env_var("RIDEFLOW_LANDING_ZONE", var("landing_zone")) }}/topic=presence/**/*.parquet',
+                         hive_partitioning = true,
+                         union_by_name = true)
+        columns:
+          - name: event_id
+            description: Deduplication key.
+          - name: ingested_at
+            description: Consumer receipt time.

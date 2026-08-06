@@ -1,0 +1,47 @@
+# dbt connection profile.
+#
+# Kept in the project directory rather than ~/.dbt so the whole configuration is
+# version-controlled and a clean clone works without per-machine setup:
+#
+#   cd transformation && dbt run --profiles-dir .
+#
+# There are no credentials here to protect - DuckDB is a local file. A cloud
+# warehouse profile would read secrets from the environment instead.
+
+rideflow:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Relative to the dbt project directory (transformation/).
+      path: "../data/warehouse/rideflow.duckdb"
+
+      # dbt is the SOLE writer to this file. DuckDB takes an exclusive write
+      # lock, which is the constraint the entire lakehouse architecture is built
+      # around: the consumer writes Parquet and never opens DuckDB, and Airflow
+      # runs dbt with max_active_runs=1 so two runs can never collide.
+      threads: 4
+
+      extensions:
+        - json      # payload_json extraction in staging
+        - parquet   # reading the landing zone
+
+    # Same engine, separate database file, so a test run can never touch the
+    # real warehouse.
+    test:
+      type: duckdb
+      path: "../data/warehouse/rideflow_test.duckdb"
+      threads: 4
+      extensions:
+        - json
+        - parquet
+
+    # In-memory: nothing persists. Used by CI, where the landing zone is
+    # generated fresh and the warehouse is disposable by definition.
+    ci:
+      type: duckdb
+      path: ":memory:"
+      threads: 4
+      extensions:
+        - json
+        - parquet

@@ -369,6 +369,60 @@ Write the *verification* script before the crash test. I ran the crash test thre
 
 ---
 
+## 2026-08-06 — M5 — DuckDB warehouse and the dbt staging layer
+
+**Time spent:** ~3h
+
+### What I learned
+
+- **A view stores SQL text, not results — so an embedded relative path is a landmine.** dbt baked `../data/raw` into the staging views, and DuckDB resolves relative paths against whoever *queries* the view, not against the dbt project. It worked from `transformation/` and failed everywhere else, including from the project root and (eventually) Power BI. The fix is an absolute path; the lesson is that anything baked into a view definition must be location-independent.
+
+- **Jinja inside a `vars:` value in `dbt_project.yml` does not behave like jinja elsewhere.** `landing_zone: "{{ env_var('X', 'y') }}"` was substituted textually into the source definition and lost a level of braces, producing `{ env_var(...) }` in the compiled SQL and a parse error. The `env_var` lookup belongs where the value is *used*, in the source YAML.
+
+- **A failing test is not automatically a bug in the data.** One relationship test failed: a `DriverOffline` with no matching `DriverOnline`. Rather than relax it, I traced the session through the raw Parquet (absent) and then into the DLQ, where I found it:
+  `SCHEMA_VIOLATION: payload[]: 'driver_status' is a required property` — the generator's deliberate `drop_required` anomaly, correctly rejected by the consumer.
+
+- **Which meant the test's *severity* was wrong, not the test.** An orphaned child is the designed consequence of quarantining its parent. Erroring there would mean the DLQ can never be exercised without failing the entire warehouse build — the quality gate punishing the pipeline for working. Changed to `warn`, with the investigation recorded in the YAML so the next person does not re-derive it.
+
+- **The financial invariants belong in SQL, not just in Python.** F1, F2, F3, F4, F7 are now dbt singular tests at `severity: error`. They block publication. Everything else warns. That split is the whole point of a graded quality gate: publishing a wrong revenue number is worse than publishing none, but blocking a build over one unknown enum value gets the gate disabled.
+
+- **Materialise the invariant, then test it.** `stg_ride_completed` computes `fare_component_sum` and `payout_split_sum` as columns. The test then compares two columns instead of re-deriving the arithmetic inside the test — so the test cannot disagree with the model about what the rule *is*.
+
+- **`try_cast`, not `cast`, when extracting from JSON.** A malformed value should surface as NULL and be caught by a `not_null` test. `cast` aborts the whole model, so one bad row would take down the entire warehouse build.
+
+- **Guard against a test that passes vacuously.** "Staging row count equals distinct landed events" would pass trivially if the landing zone happened to contain no duplicates. A second test asserts the duplicates were actually there, so the first one is proving something.
+
+### Problems faced
+
+| Problem | Root cause | Resolution | Time lost |
+|---|---|---|---|
+| Warehouse only queryable from `transformation/` | Relative path baked into the view | Absolute path via `RIDEFLOW_LANDING_ZONE` | 25 min |
+| `syntax error at or near "RIDEFLOW_LANDING_ZONE"` | Jinja in a `vars:` value substituted textually | Move `env_var` into `_sources.yml` | 15 min |
+| DuckDB could not read `/c/Users/...` | Git Bash `pwd` returns a MSYS path | `pwd -W` for a Windows path | 10 min |
+| Relationship test failed on a driver session | Parent event was legitimately DLQ'd | Severity `warn`, with the DLQ evidence documented | 20 min |
+| Heredoc aborted mid-file | Bash quoting in a multi-file `cat` | Use the file tool, stop fighting the shell | 10 min |
+
+### Decisions made
+
+| Decision | Alternatives considered | Why this one | Reversible? |
+|---|---|---|---|
+| Staging as views | Tables | Recomputed from the immutable landing zone every run, which is what makes pass-2 dedup *authoritative* rather than best-effort | Easy |
+| Base model + 9 typed models | One wide flattened model | Nine event types, nine shapes — one table would be very wide and very sparse | Medium |
+| Financial tests `error`, quality signals `warn` | Uniform severity | An over-blocking gate gets disabled; a never-blocking gate is decoration | Easy |
+| `profiles.yml` inside the project | `~/.dbt/profiles.yml` | Version-controlled, so a clean clone works with no per-machine setup. No secrets to protect — DuckDB is a local file. | Easy |
+| Read-only connections everywhere but dbt | Shared read-write | A second read-write connection takes the exclusive lock and breaks the next dbt run | Hard |
+
+### What I'd do differently
+
+Set the landing-zone path absolute from the first line. I wrote eleven models on top of a source definition that only worked from one directory, and only caught it because I happened to run a verification script from the project root.
+
+### Open questions
+
+- 1,786 open driver sessions out of 2,288. Plausible — most shifts extend past the observation window — but M6 must not treat an open session as a zero-length one.
+- `dbt source freshness` passes now only because data was just ingested. Its thresholds are untested against genuinely stale data.
+
+---
+
 ## Running list of things I got wrong
 
 Kept deliberately. **"Tell me about a mistake you made"** is a standard interview question, and a specific answer with a concrete fix beats a vague one every time.

@@ -1,0 +1,312 @@
+version: 2
+
+models:
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_trip_events
+    description: >
+      Base staging for trip lifecycle events: environment filter, authoritative
+      deduplication on event_id, envelope typing. No joins, no aggregation, no
+      business rules.
+    columns:
+      - name: event_id
+        description: >
+          Unique AFTER deduplication. The landing zone is append-only and
+          deliberately retains redelivered copies, so this uniqueness test is
+          what proves pass-2 dedup actually ran.
+        data_tests:
+          - unique
+          - not_null
+      - name: event_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [RideRequested, RideAccepted, DriverArrived, RideStarted,
+                         RideCompleted, RideCancelled, PaymentCompleted]
+      - name: event_timestamp
+        data_tests: [not_null]
+      - name: ingested_at
+        data_tests: [not_null]
+      - name: partition_key
+        data_tests: [not_null]
+      - name: correlation_id
+        data_tests: [not_null]
+      - name: environment
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [local]
+      - name: payload_json
+        data_tests: [not_null]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_driver_presence
+    description: Base staging for driver presence events.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: event_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [DriverOnline, DriverOffline]
+      - name: correlation_id
+        description: Equals session_id - the key pairing an Online with its Offline.
+        data_tests: [not_null]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_ride_requested
+    description: The first event of every trip and the origin of the funnel.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: rider_id
+        data_tests: [not_null]
+      - name: city_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_city')
+                field: city_id
+      - name: pickup_zone_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_zone')
+                field: zone_id
+      - name: dropoff_zone_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_zone')
+                field: zone_id
+      - name: vehicle_type
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_vehicle_type')
+                field: vehicle_type_code
+      - name: customer_tier
+        description: Point-in-time snapshot. Never joined from a current-tier dimension.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customer_tier')
+                field: customer_tier_code
+      - name: payment_method
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_payment_method')
+                field: payment_method_code
+      - name: weather_code
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_weather')
+                field: weather_code
+      - name: traffic_level
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_traffic_level')
+                field: traffic_level_code
+      - name: estimated_fare
+        data_tests: [not_null]
+      - name: surge_multiplier
+        data_tests: [not_null]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_ride_accepted
+    description: Driver matched. The first event carrying driver_id.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: driver_id
+        description: Never null here - this event is what assigns the driver.
+        data_tests: [not_null]
+      - name: matching_duration_sec
+        data_tests: [not_null]
+      - name: dispatch_attempt_number
+        data_tests: [not_null]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_driver_arrived
+    description: Driver reached the pickup point. Optional in the lifecycle.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: driver_id
+        data_tests: [not_null]
+      - name: arrival_delay_sec
+        description: Signed. Negative means the driver arrived early.
+        data_tests: [not_null]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_ride_started
+    description: Trip underway. The revenue-eligibility boundary.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: driver_id
+        data_tests: [not_null]
+      - name: rider_wait_duration_sec
+        data_tests: [not_null]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_ride_completed
+    description: The revenue event. Every fare metric originates here.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: driver_id
+        data_tests: [not_null]
+      - name: total_fare
+        data_tests: [not_null]
+      - name: distance_km
+        data_tests: [not_null]
+      - name: duration_sec
+        data_tests: [not_null]
+      - name: currency
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [INR]
+      - name: payment_method
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_payment_method')
+                field: payment_method_code
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_ride_cancelled
+    description: Terminal, and mutually exclusive with RideCompleted.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: cancelled_by
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [RIDER, DRIVER, SYSTEM]
+      - name: cancellation_reason_code
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_cancellation_reason')
+                field: cancellation_reason_code
+      - name: cancelled_at_status
+        description: The key funnel column - which stage the trip reached before dropping out.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [REQUESTED, MATCHED, DRIVER_ARRIVED, STARTED]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_payment_completed
+    description: Payment settled successfully.
+    columns:
+      - name: payment_id
+        data_tests: [unique, not_null]
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: payment_status
+        description: >
+          Always SUCCEEDED in v1.0.0 - the event asserts success by name. This
+          is NOT a 100% success rate; terminal failures emit nothing at all.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [SUCCEEDED]
+      - name: payment_method
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_payment_method')
+                field: payment_method_code
+      - name: amount_charged
+        data_tests: [not_null]
+      - name: attempt_number
+        data_tests: [not_null]
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_driver_online
+    description: Driver went on duty. Supply side.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: session_id
+        data_tests: [unique, not_null]
+      - name: driver_id
+        data_tests: [not_null]
+      - name: zone_id
+        description: The supply side of the marketplace-health metric.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_zone')
+                field: zone_id
+      - name: vehicle_type
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_vehicle_type')
+                field: vehicle_type_code
+      - name: driver_status
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_driver_status')
+                field: driver_status_code
+
+  # ────────────────────────────────────────────────────────────────────────
+  - name: stg_driver_offline
+    description: Driver went off duty, closing a session.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: session_id
+        description: >
+          Invariant R3: should match an earlier DriverOnline. Unique here, but
+          NOT every online session has an offline row - an open session is
+          legitimate, not missing data.
+        data_tests:
+          - unique
+          - not_null
+          # severity: warn, deliberately.
+          #
+          # An orphaned DriverOffline is the EXPECTED consequence of its
+          # DriverOnline being quarantined in the DLQ. Verified on real data:
+          # session fbdc5433 lost its Online to
+          #   SCHEMA_VIOLATION: payload[]: 'driver_status' is a required property
+          # which is the generator's deliberate `drop_required` anomaly. The
+          # consumer rejected it correctly; the Offline then arrived normally.
+          #
+          # Erroring here would mean the DLQ can never be exercised without
+          # failing the entire warehouse build - the quality gate would punish
+          # the pipeline for working as designed. This is a data-quality SIGNAL
+          # (a rising orphan count tracks a rising DLQ rate), not a correctness
+          # violation, so it warns. Financial invariants still block
+          # (testing_strategy.md 4.5).
+          - relationships:
+              config:
+                severity: warn
+              arguments:
+                to: ref('stg_driver_online')
+                field: session_id
+      - name: session_duration_sec
+        data_tests: [not_null]
+      - name: offline_reason
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [SHIFT_END, BREAK, APP_CLOSED, CONNECTION_LOST, SUSPENDED, UNKNOWN]
