@@ -227,8 +227,8 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M4 | Ingestion consumer | ✅ **Complete** — zero loss proven under SIGKILL |
 | M5 | Warehouse & dbt foundation | ✅ **Complete** — staging layer, exact reconciliation |
 | M6 | Dimensional model | ✅ **Complete** — 19 models, idempotency proven |
-| M7 | Data quality | ✅ **Complete** — 167 dbt tests, gate proven by chaos injection |
-| M8 | Orchestration | ⬜ Not started |
+| M7 | Data quality | ✅ **Complete** — gate proven by chaos injection |
+| M8 | Orchestration | ✅ **Complete** — Airflow 3.3 DAG, 9/9 tasks green end-to-end |
 | M9 | Analytics & dashboard | ⬜ Not started |
 | M10 | Hardening & documentation | ⬜ Not started |
 
@@ -342,6 +342,34 @@ fct_trips .............................. SKIP       <- mart never built
 **Quarantine, never discard.** 35 trips are quarantined — 12 missing their `RideRequested`, 23 with invalid sequences — and every one carries a stated reason in `quarantined_trips`. They stay in `fct_trips` so that when a missing event arrives late, the next run reassembles them and they leave quarantine on their own.
 
 `fct_pipeline_quality` tracks orphan rate, sequence-invalid rate, late arrivals, clock skew, unknown-key rate, and **unexplained revenue** (₹5,601 of payments whose trip cannot be described) — as trends, not gates.
+
+### M8 — orchestration
+
+```bash
+docker compose -f docker/docker-compose.airflow.yml build airflow-init
+docker compose -f docker/docker-compose.airflow.yml up -d
+# http://localhost:8080   (admin / admin)
+```
+
+`rideflow_transform_hourly` — **9/9 tasks green** end to end:
+
+```
+check_landing_zone_freshness → dbt_deps → dbt_seed → dbt_run → dbt_test
+                                                                  ├→ export_marts_parquet → reconciliation_check → publish_success_marker
+                                                                  └→ dbt_docs_generate
+```
+
+| Setting | Why |
+|---|---|
+| **`max_active_runs=1`** | Enforces the DuckDB single-writer invariant the whole architecture rests on |
+| `dbt_test` retries **= 0** | A data-quality failure is deterministic; retrying delays the alert for no benefit |
+| `catchup=False` | With `max_active_runs=1`, catchup would execute a backlog *serially* for days |
+| `dagrun_timeout` < schedule | A hung run is killed before the next is due |
+| Landing zone mounted **read-only** | Immutability enforced by the OS, not by convention |
+
+The run publishes `_LAST_SUCCESSFUL_RUN.json` with live reconciliation — 17,893 landed → 17,880 distinct (13 duplicates removed) → 17,880 staged — plus seven Parquet marts that are **readable from the host**, which is the serving-layer contract.
+
+> **Path binding, stated plainly:** dbt bakes the landing-zone path into the *staging views*, so when Airflow builds the warehouse those views are container-bound. The **marts are tables**, carry no path dependency, and are what pytest, the host and Power BI actually read.
 
 ### Known Design Gaps
 

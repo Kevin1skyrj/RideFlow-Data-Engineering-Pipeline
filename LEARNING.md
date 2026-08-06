@@ -519,6 +519,59 @@ Write the guard before the proof. Every one of the three false greens would have
 
 ---
 
+## 2026-08-06 — M8 — Airflow orchestration
+
+**Time spent:** ~3h
+
+### What I learned
+
+- **Airflow 3 needs two settings that Airflow 2 did not, and both fail confusingly.**
+  1. `AIRFLOW__CORE__EXECUTION_API_SERVER_URL` — task runners no longer touch the metadata DB directly; they call the Task Execution API. The default points at `localhost`, which inside the scheduler container is nothing, so every task dies with `httpx.ConnectError: Connection refused` and sits in `queued`. It reads like "no worker available".
+  2. `AIRFLOW__API_AUTH__JWT_SECRET` — task runners authenticate with a JWT. Unset, each container generates its **own** random signing secret, so the scheduler's token is rejected by the api-server: `ServerResponseError: Invalid auth token`. The task gets an `end_date` but **no `start_date`** — it never started at all.
+
+- **`airflow tasks test` passing proves less than it looks.** It runs the callable in-process, bypassing the executor entirely. My freshness task passed there while failing every scheduled run. Useful for debugging *callable* logic; useless for debugging *execution*.
+
+- **A custom image is justified when the thing genuinely does not exist.** Kafka and Postgres ship as published images, so building our own would reimplement them worse. Airflow does not ship with dbt — that is a real gap, and the first legitimate Dockerfile in the project.
+
+- **Put dbt in its own virtualenv inside the image.** Airflow pins dozens of shared transitive dependencies and dbt pins its own; installing dbt into Airflow's environment means one of them loses, and the loss surfaces later as a mysterious runtime error rather than an install conflict. An isolated venv sidesteps the negotiation entirely — which is also *why* the DAG uses `BashOperator` rather than calling dbt as a library.
+
+- **Airflow 3 omits `logical_date` from the context of a manual run** — absent, not `None`. Subscripting it raises `KeyError` and fails the task after every upstream step has already succeeded. Read run context with `.get()`.
+
+- **Compose cannot build one image from four services in parallel.** All four share the same `image:` tag via a YAML anchor, and they collide: `failed to solve: image already exists`. Build one service explicitly first.
+
+- **The container/host path split has a clean answer.** dbt bakes the landing-zone path into *staging views*, so a container-built warehouse has container-bound views. But **marts are tables** — no path dependency — and marts plus the Parquet export are what consumers read. Staging is an internal detail. That was already the architecture; M8 just made the consequence concrete.
+
+### Problems faced
+
+| Problem | Root cause | Resolution | Time lost |
+|---|---|---|---|
+| Every task stuck `queued`, then failed | Airflow 3 execution API URL defaulted to localhost | Set `EXECUTION_API_SERVER_URL` to the api-server | 25 min |
+| Tasks failed with no `start_date` | Each container signed JWTs with its own random secret | Shared `API_AUTH__JWT_SECRET` | 30 min |
+| `publish_success_marker` failed after 8 green tasks | `context["logical_date"]` absent on manual runs | Defensive `.get()` | 15 min |
+| `image already exists` on build | Four services building the same tag concurrently | Build one service explicitly | 10 min |
+| Chased a phantom "task callable is broken" | `airflow tasks test` bypasses the executor | Read scheduler logs instead | 20 min |
+
+### The pattern, again
+
+Every one of these failed in a way that pointed somewhere other than the cause: a connection error that looked like a missing worker, an auth rejection that looked like a scheduling problem, a passing inline test that looked like proof. **The scheduler logs had the real answer each time**, and I only got there by reading them rather than reasoning from the symptom.
+
+### Decisions made
+
+| Decision | Alternatives considered | Why this one | Reversible? |
+|---|---|---|---|
+| Airflow 3.3.0 | Airflow 2.x | Current major version; 2.x is not in the recent published tags | Hard |
+| dbt in an isolated venv | Install alongside Airflow | Avoids an unwinnable dependency negotiation | Easy |
+| Separate compose file from Kafka | One combined file | Different lifecycles - Kafka must stay up; Airflow is restartable | Easy |
+| Fixed JWT/Fernet literals | Generate at runtime | Local-only stack with no real credentials; a deployed one would inject from a secret store | Easy |
+| `dbt_docs_generate` uses `all_done` | Block on it | Documentation failing must never block publication | Easy |
+
+### Open questions
+
+- Backfill is parameterised in the DAG design but has not been exercised over a 30-day range. The M8 exit criterion is only partly met until it is.
+- Alerting is currently log-only. `on_failure_callback` routing is designed in `airflow_design.md` but not wired.
+
+---
+
 ## Running list of things I got wrong
 
 Kept deliberately. **"Tell me about a mistake you made"** is a standard interview question, and a specific answer with a concrete fix beats a vague one every time.

@@ -1,0 +1,197 @@
+# RideFlow orchestration (M8).
+#
+# Separate file from docker-compose.yml on purpose: Kafka and Airflow have
+# different lifecycles. Kafka must stay up continuously to receive events;
+# Airflow can be stopped and started without losing anything, because its state
+# lives in Postgres and the warehouse is rebuildable.
+#
+#   docker compose -f docker/docker-compose.airflow.yml up -d --build
+#   http://localhost:8080     (admin / admin)
+#
+# Run alongside Kafka:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.airflow.yml up -d
+
+name: rideflow-airflow
+
+x-airflow-common: &airflow-common
+  build:
+    context: ./airflow
+    dockerfile: Dockerfile
+  image: rideflow/airflow:3.3.0
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+
+    # ── Shared secrets. Every service MUST use the same values ──────────────
+    # Airflow 3 task runners authenticate to the Task Execution API with a JWT.
+    # Left unset, each container generates its OWN random signing secret, the
+    # scheduler's token fails validation at the api-server, and every task dies
+    # with:
+    #     airflow.sdk.api.client.ServerResponseError: Invalid auth token
+    # The task never starts, so it has an end_date but no start_date - which
+    # reads like "no worker available" rather than "authentication rejected".
+    #
+    # These are fixed literals because this stack is LOCAL ONLY and holds no
+    # real credentials. A deployed environment would inject them from a secret
+    # store; committing a signing key there would be a genuine vulnerability.
+    AIRFLOW__API_AUTH__JWT_SECRET: rideflow-local-dev-jwt-secret-not-for-production
+    AIRFLOW__CORE__FERNET_KEY: Zt7Yk3nQwVx8LpR2gHc5FjD9sBvNmKaXeUiOyTrPqWc=
+
+    # Deterministic scheduling regardless of the host machine's timezone.
+    # The same reason the DuckDB session timezone is pinned: a machine-dependent
+    # clock makes schedules and date logic differ between environments.
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: utc
+
+    # ── Airflow 3 REQUIRES this in a multi-container setup ──────────────────
+    # In Airflow 3, task runners no longer touch the metadata database directly.
+    # They call the Task Execution API on the api-server. The default URL points
+    # at localhost, which inside the scheduler container resolves to nothing, so
+    # every task fails with:
+    #     httpx.ConnectError: [Errno 111] Connection refused
+    # and sits in `queued` while the scheduler retries it - a failure mode that
+    # looks like "no worker" rather than "wrong URL". This is the single most
+    # common Airflow 2 -> 3 migration trap for containerised deployments.
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+
+    # Paths INSIDE the container. See the note on path binding below.
+    RIDEFLOW_LANDING_ZONE: /opt/rideflow/data/raw
+    RIDEFLOW_WAREHOUSE_PATH: /opt/rideflow/data/warehouse/rideflow.duckdb
+    RIDEFLOW_MART_EXPORT: /opt/rideflow/data/processed
+    DBT_PROJECT_DIR: /opt/rideflow/transformation
+    DBT_PROFILES_DIR: /opt/rideflow/transformation
+    DBT_BIN: /home/airflow/dbt-venv/bin/dbt
+    KAFKA_BOOTSTRAP_SERVERS: broker:9092
+
+  volumes:
+    - ../orchestration/dags:/opt/airflow/dags:ro
+    - ../orchestration/plugins:/opt/airflow/plugins:ro
+    - airflow-logs:/opt/airflow/logs
+
+    # The dbt project. Read-write because dbt writes target/ and logs/.
+    - ../transformation:/opt/rideflow/transformation:rw
+
+    # ⚠️ THE LANDING ZONE IS MOUNTED READ-ONLY.
+    # Immutability enforced by the OS, not by convention: a bug that tries to
+    # delete a landed file gets a permission error instead of silently
+    # destroying the system of record.
+    - ../data/raw:/opt/rideflow/data/raw:ro
+
+    - ../data/warehouse:/opt/rideflow/data/warehouse:rw
+    - ../data/processed:/opt/rideflow/data/processed:rw
+    - ../docs:/opt/rideflow/docs:ro
+
+  user: "50000:0"
+  depends_on:
+    airflow-postgres:
+      condition: service_healthy
+
+services:
+  # Airflow METADATA ONLY. Contains DAG runs, task states and connections -
+  # no RideFlow business data whatsoever. Confusing this with the analytical
+  # warehouse is a common misreading; they are entirely separate systems with
+  # separate lifecycles and separate backup requirements.
+  airflow-postgres:
+    image: postgres:17-alpine
+    container_name: rideflow-airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # One-shot: migrate the metadata schema and create the admin user.
+  # Exit code 0 is success; the container is expected to stop.
+  airflow-init:
+    <<: *airflow-common
+    container_name: rideflow-airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin --password admin \
+          --firstname Rajat --lastname Pandey \
+          --role Admin --email admin@rideflow.local || true
+        echo "airflow init complete"
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    container_name: rideflow-airflow-apiserver
+    command: api-server
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: rideflow-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 20s
+      retries: 6
+      start_period: 60s
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Airflow 3 runs DAG parsing as its own process rather than inside the
+  # scheduler, so it is a separate service.
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: rideflow-airflow-dag-processor
+    command: dag-processor
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  airflow-postgres-data:
+    name: rideflow-airflow-postgres-data
+  airflow-logs:
+    name: rideflow-airflow-logs
+
+# ── A note on path binding, because it is not obvious ────────────────────────
+#
+# dbt bakes the landing-zone path into the STAGING VIEW definitions, and DuckDB
+# resolves it against whoever queries the view. When Airflow builds the
+# warehouse, that path is the CONTAINER path (/opt/rideflow/data/raw), so the
+# staging views are only queryable from inside the container.
+#
+# The MARTS are unaffected: they are materialised as tables, so their data is
+# physically in the DuckDB file and carries no path dependency. Host tools,
+# pytest and Power BI all read marts (or the exported Parquet), never staging.
+#
+# So the contract is: staging is an internal implementation detail; marts and
+# the Parquet export are what consumers read. Stated here rather than left to be
+# discovered when a host query fails with "No files found that match".
