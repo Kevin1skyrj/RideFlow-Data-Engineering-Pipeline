@@ -59,11 +59,21 @@ dim_zone ──< fct_driver_sessions >── dim_driver_status
 | `Trips Completed` | `CALCULATE([Trips Requested], fct_trips[is_completed] = TRUE)` | `... and is_completed` | |
 | `Trips Cancelled` | `CALCULATE([Trips Requested], fct_trips[is_cancelled] = TRUE)` | `... and is_cancelled` | |
 | `Trips Unmatched` | `CALCULATE([Trips Requested], fct_trips[is_matched] = FALSE)` | `... and not is_matched` | Demand that never found supply. |
-| `Gross Bookings` | `SUM(fct_trips[total_fare])` | `sum(total_fare)` | Additive. |
-| `Driver Payout` | `SUM(fct_trips[driver_payout])` | `sum(driver_payout)` | Additive. |
-| `Platform Commission` | `SUM(fct_trips[platform_commission])` | `sum(platform_commission)` | Net revenue before gateway cost. |
-| `Surge Revenue` | `SUM(fct_trips[surge_amount])` | `sum(surge_amount)` | **Currency, not a ratio.** See §4. |
-| `Pre-Surge Revenue` | `SUM(fct_trips[base_fare]) + SUM(fct_trips[distance_fare]) + SUM(fct_trips[time_fare])` | same | Denominator for weighted surge. |
+| `Gross Bookings` | `CALCULATE(SUM(fct_trips[total_fare]), fct_trips[is_quarantined] = FALSE())` | `sum(total_fare) where not is_quarantined` | Additive. |
+| `Driver Payout` | `CALCULATE(SUM(fct_trips[driver_payout]), fct_trips[is_quarantined] = FALSE())` | `sum(driver_payout) where not is_quarantined` | Additive. |
+| `Platform Commission` | `CALCULATE(SUM(fct_trips[platform_commission]), fct_trips[is_quarantined] = FALSE())` | `sum(platform_commission) where not is_quarantined` | Net revenue before gateway cost. |
+| `Surge Revenue` | `CALCULATE(SUM(fct_trips[surge_amount]), fct_trips[is_quarantined] = FALSE())` | `sum(surge_amount) where not is_quarantined` | **Currency, not a ratio.** See §4. |
+| `Pre-Surge Revenue` | `CALCULATE(SUM(fct_trips[base_fare]) + SUM(fct_trips[distance_fare]) + SUM(fct_trips[time_fare]), fct_trips[is_quarantined] = FALSE())` | same, `where not is_quarantined` | Denominator for weighted surge. |
+
+> ### ⚠️ The quarantine filter was missing from all five money measures
+>
+> Until 2026-08-07 these were written as bare `SUM(...)`, with no `CALCULATE`. Section 0 of this document said "**every measure filters quarantine**" while the table below it showed five measures that did not — and the table is what people copy.
+>
+> Built exactly as written, the report reported **₹8,036,734.87** of gross bookings against a true **₹7,936,695.40**: the 212 quarantined trips carry ₹100,039.47 of fare between them. Platform commission was overstated by ₹19,055.04.
+>
+> It was found only because the numbers were checked against the warehouse. Nothing in DAX errors on a missing filter — the measure is valid, it just answers a slightly different question than its name claims. **A documented rule that the examples violate is worse than no rule**, because it reads as verified.
+
+**Known gap — `fct_payments` has no quarantine flag.** 196 payments totalling ₹125,237.87 belong to quarantined trips and are still inside `Amount Collected` and `Gateway Fees`. That makes `Net Platform Revenue` slightly inconsistent: its commission term excludes quarantined trips, its fee and discount terms do not. Removing the fact-to-fact relationship (correctly) means DAX cannot filter across. The fix belongs in dbt — propagate `is_quarantined` onto `fct_payments` — not in a workaround here.
 | `Amount Collected` | `SUM(fct_payments[amount_charged])` | `sum(amount_charged)` | Money received ≠ fare charged. |
 | `Gateway Fees` | `SUM(fct_payments[gateway_fee_amount])` | `sum(gateway_fee_amount)` | Real margin leakage. |
 | `Driver Sessions` | `COUNTROWS(fct_driver_sessions)` | `count(*)` | Supply side. |
