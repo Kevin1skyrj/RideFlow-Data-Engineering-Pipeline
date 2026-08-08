@@ -1,0 +1,71 @@
+name: Deploy dashboard
+
+# Publishes site/ to GitHub Pages.
+#
+# ── Why the page is committed rather than generated here ────────────────────
+# The `pipeline` job in ci.yml generates a small synthetic window (one hour,
+# fixed seed) purely to prove the warehouse builds from nothing. Publishing
+# THAT would put ~600 trips on the public page instead of a real operating day.
+#
+# So site/index.html is generated locally against the full dataset and
+# committed, and this workflow only deploys it. The page states on its face
+# that it is a snapshot; that is the honest framing of this trade, not an
+# excuse for it.
+#
+# ci.yml still runs tests/integration/test_static_dashboard.py, which
+# regenerates the page in memory and asserts its numbers against the warehouse
+# it just built. So the GENERATOR is verified on every push even though the
+# published artefact is a committed snapshot.
+#
+# ── One-time setup ─────────────────────────────────────────────────────────
+# Repository Settings → Pages → Source: "GitHub Actions". Without that, this
+# workflow succeeds and nothing is served.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a half-finished deployment - unlike a test run, an interrupted
+# publish can leave the live site inconsistent.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the page exists
+        # A deploy that silently publishes an empty directory is worse than a
+        # failed one: the link exists and 404s.
+        run: |
+          test -f site/index.html || {
+            echo "site/index.html is missing. Generate it with:"
+            echo "  python -m dashboard.generate_static"
+            exit 1
+          }
+          echo "size: $(du -h site/index.html | cut -f1)"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

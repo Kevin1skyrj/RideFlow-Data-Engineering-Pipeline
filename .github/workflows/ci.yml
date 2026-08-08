@@ -111,6 +111,14 @@ jobs:
       - name: Export marts
         run: python -m warehouse.export
 
+      - name: Generate the static dashboard
+        # Proves the generator runs against a warehouse built from scratch.
+        # The OUTPUT is discarded - site/index.html is a committed snapshot of
+        # the full dataset, not of this one-hour CI window (see pages.yml).
+        # What matters is that the code path works and its numbers reconcile,
+        # which test_static_dashboard.py asserts in the step below.
+        run: python -m dashboard.generate_static
+
       - name: Full test suite
         # Now that the warehouse exists, the integration tests stop skipping.
         # Running them before the build would report a green suite that asserted
