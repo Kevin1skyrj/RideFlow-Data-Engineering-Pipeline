@@ -1,0 +1,18 @@
+# Use the tools pinned in requirements.txt instead of downloading a second,
+# potentially different set of lint dependencies into hook environments.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: python -m ruff check
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: black
+        name: black
+        entry: python -m black --check
+        language: system
+        types: [python]
+        require_serial: true

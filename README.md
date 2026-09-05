@@ -2,10 +2,10 @@
 
 **A real-time ride-hailing data platform — Kafka → Parquet lakehouse → dbt → DuckDB → Power BI, orchestrated by Airflow.**
 
-![Status](https://img.shields.io/badge/status-M0--M8%20complete%20%C2%B7%20M9%20in%20progress-brightgreen)
-![Tests](https://img.shields.io/badge/tests-221%20passing-brightgreen)
-![dbt](https://img.shields.io/badge/dbt-21%20models%20%C2%B7%20167%20tests-orange)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Status](https://img.shields.io/badge/status-M0--M9%20complete%20%C2%B7%20M10%20in%20progress-brightgreen)
+![Tests](https://img.shields.io/badge/tests-243%20passing-brightgreen)
+![dbt](https://img.shields.io/badge/dbt-21%20models%20%C2%B7%20135%20tests-orange)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -23,7 +23,7 @@ The pipeline runs end to end. These figures come from a full simulated day pushe
 | Trips quarantined | **212** — exported for inspection, excluded from every measure |
 | Events landed | **90,186** across 9 event types |
 
-**Verified, not asserted:** 221 pytest tests and 167 dbt tests pass against the built warehouse. Financial invariants (fare decomposition, payout split, surge derivation) are `error`-severity — the pipeline fails rather than publishes a number that doesn't reconcile.
+**Verified, not asserted:** 243 pytest tests pass with the broker running and host-readable staging views; `dbt build` completes 167 resources (21 models, 11 seeds, 135 data tests) with no errors. Financial invariants (fare decomposition, payout split, surge derivation) are `error`-severity — the pipeline fails rather than publishes a number that doesn't reconcile.
 
 | Layer | State |
 |---|---|
@@ -31,8 +31,8 @@ The pipeline runs end to end. These figures come from a full simulated day pushe
 | Landing zone → dbt → DuckDB | ✅ 21 models, medallion layering, idempotent incrementals |
 | Airflow orchestration | ✅ 9-task DAG, containerised, backfill via `dag_run.conf` |
 | Exported marts | ✅ 19 Parquet files + freshness marker |
-| Power BI report | 🔨 **In progress** — measures and build guide in [`dashboard/`](dashboard/) |
-| Hardening, ADRs, runbook | ⬜ M10 |
+| Power BI report | ✅ Five pages, 30 measures, verified against the warehouse |
+| Hardening, ADRs, runbook | 🟡 M10 in progress — CI, chaos tests, runbooks, and design docs exist; clean-machine proof remains |
 
 Full breakdown: [Implementation Status](#8-implementation-status).
 
@@ -167,7 +167,7 @@ Full detail: [`docs/etl_design.md`](docs/etl_design.md)
 
 ### Prerequisites
 
-- Python 3.11 or 3.12 *(see [Known Constraints](#known-constraints) — 3.13 is not yet verified)*
+- Python 3.12 or 3.13
 - Docker Desktop, **running**
 - Power BI Desktop *(Windows only, optional — Parquet marts are readable without it)*
 
@@ -176,6 +176,7 @@ Full detail: [`docs/etl_design.md`](docs/etl_design.md)
 python -m venv .venv
 source .venv/Scripts/activate        # Git Bash on Windows
 pip install -r requirements.txt
+pre-commit install                    # optional local gate; CI runs the same checks
 
 # 2. Infrastructure
 docker compose -f docker/docker-compose.yml up -d
@@ -201,15 +202,20 @@ Or run steps 4–5 on a schedule:
 docker compose -f docker/docker-compose.airflow.yml up -d
 ```
 
-Airflow UI at `localhost:8080`, Kafka UI at `localhost:8081`.
+Airflow UI at `localhost:8080`, Kafka UI at `localhost:8081`. Airflow 3
+generates the local `admin` password on first start; retrieve it with:
+
+```bash
+docker exec rideflow-airflow-apiserver cat /opt/airflow/logs/simple_auth_manager_passwords.json.generated
+```
 
 **Verify it worked:**
 
 ```bash
-pytest                               # 221 passed, 5 skipped
+pytest --basetemp .pytest-tmp        # Full local stack: 243 passed, 1 intentional skip
 ```
 
-The 5 skips are deliberate — staging models are views with the landing-zone path compiled in, so they are unreadable from the host when Airflow built the warehouse inside a container. The marts are tables and carry no path dependency. The tests skip with an explanation rather than failing, because a suite that cries wolf on every scheduled run is a suite people stop reading.
+The exact skip count depends on which services are running. With Kafka stopped and the checked-in warehouse built by Airflow, the current local run reports 23 skips: 18 broker-dependent tests, 4 staging-view tests whose paths are container-bound, and 1 sample-data test without a `RideCompleted` event. The marts are tables and carry no container path dependency. Start Kafka and rebuild dbt on the host to enable the corresponding integration tests.
 
 ---
 
@@ -260,8 +266,8 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M6 | Dimensional model | ✅ **Complete** — 19 models, idempotency proven |
 | M7 | Data quality | ✅ **Complete** — gate proven by chaos injection |
 | M8 | Orchestration | ✅ **Complete** — Airflow 3.3 DAG, backfill proven |
-| M9 | Analytics & dashboard | 🟡 **Data + metrics done** — `.pbix` is yours to build |
-| M10 | Hardening & documentation | ⬜ Not started |
+| M9 | Analytics & dashboard | ✅ **Complete** — five-page `.pbix`, 30 measures, static dashboard, and metric SQL |
+| M10 | Hardening & documentation | 🟡 **In progress** — CI, chaos tests, runbooks, core design docs, and Airflow evidence complete; clean-machine proof remains |
 
 ### Known Constraints
 
@@ -275,8 +281,8 @@ Open items, stated rather than hidden:
 
 ### Verified
 
-- **221 pytest tests pass, 5 skip** (container path-binding, documented above); `ruff` and `black` clean.
-- **167 dbt tests pass**, with financial invariants at `error` severity and quality signals at `warn`.
+- **243 pytest tests pass, 1 intentional sample-data test skips** with Kafka running and staging rebuilt with a host-absolute path; `ruff` and `black` are clean.
+- **`dbt build` completes 167 resources** — 21 models, 11 seeds, and 135 data tests; the latest run recorded 165 passes, 2 quality warnings, and 0 errors.
 - **`pip install -r requirements.txt` resolves cleanly** on Python 3.13.5 (84 packages, no conflicts).
 - **Generator output validates against the contract** — every event checked against the JSON Schemas parsed out of `event_contract.md` itself.
 - **Zero loss under SIGKILL** — consumer killed mid-batch, restarted, reconciled exactly.
@@ -383,7 +389,7 @@ fct_trips .............................. SKIP       <- mart never built
 ```bash
 docker compose -f docker/docker-compose.airflow.yml build airflow-init
 docker compose -f docker/docker-compose.airflow.yml up -d
-# http://localhost:8080   (admin / admin)
+# http://localhost:8080   (admin / generated password; see How to Run)
 ```
 
 `rideflow_transform_hourly` — **9/9 tasks green** end to end:
@@ -461,7 +467,7 @@ Compilation Error: backfill_start and backfill_end must be supplied together.
 | [`dashboard/measures.md`](dashboard/measures.md) — every DAX measure + its dbt equivalent | ✅ |
 | Freshness contract (`_FRESHNESS.json`) | ✅ |
 | [`dashboard/README.md`](dashboard/README.md) — step-by-step build guide | ✅ |
-| **`RideFlow.pbix`** | ⬜ **Manual** — Power BI Desktop is a Windows GUI; `.pbix` cannot be scripted |
+| **`RideFlow.pbix`** | ✅ **Complete** — five pages and 30 measures verified against warehouse totals |
 
 **Funnel, measured:**
 
@@ -506,7 +512,23 @@ Each with its justifying trigger: [`PROJECT_PLAN.md`](PROJECT_PLAN.md) §11
 
 ## 10. Screenshots
 
-> Added as milestones complete. Planned: Kafka UI topic throughput, Airflow DAG graph and Gantt, dbt lineage DAG, Power BI marketplace-health and funnel pages, and a chaos test demonstrating zero data loss across a forced consumer restart.
+### Airflow control-plane health
+
+All required Airflow 3 services are healthy, including the Triggerer; the
+latest run completed with nine successful task instances and no failures.
+
+![Airflow control-plane health](docs/screenshots/airflow-health.png)
+
+### Transformation DAG
+
+The hourly DAG checks landing-zone freshness, builds and tests the dbt project,
+then generates docs and exports/reconciles marts before publishing its success
+marker.
+
+![RideFlow Airflow DAG](docs/screenshots/airflow-dag-graph.png)
+
+Still useful as future evidence: Kafka topic throughput, dbt lineage, Power BI
+marketplace-health and funnel pages, and the forced-restart chaos test.
 
 ---
 

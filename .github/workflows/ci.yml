@@ -25,10 +25,9 @@ concurrency:
 
 env:
   PYTHONUNBUFFERED: "1"
-  # dbt resolves profiles.yml from the working directory, but being explicit
-  # means the workflow does not silently depend on which directory a step
-  # happens to run in.
-  DBT_PROFILES_DIR: transformation
+
+permissions:
+  contents: read
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -38,14 +37,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # pyproject declares requires-python >=3.11. Testing only the version on
+        # pyproject declares requires-python >=3.12. Testing only the version on
         # the author's laptop would make that claim untested.
-        python: ["3.11", "3.12", "3.13"]
+        # numpy 2.5 requires Python 3.12+, matching pyproject.toml.
+        python: ["3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -54,7 +54,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
       - name: Lint
         run: |
@@ -73,9 +73,9 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -84,7 +84,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
       - name: Generate a bounded window into the landing zone
         # --sink partitioned writes Parquet directly, bypassing Kafka. The
@@ -106,7 +106,10 @@ jobs:
         # failing test stops its downstream models rather than letting them
         # build on data already known to be wrong. There is no packages.yml, so
         # no `dbt deps` step - adding one would fail on a clean checkout.
-        run: dbt build --target ci
+        # The job already runs inside transformation/. An earlier global value
+        # of DBT_PROFILES_DIR=transformation therefore resolved to the invalid
+        # transformation/transformation path and made every pipeline run fail.
+        run: dbt build --target ci --profiles-dir .
 
       - name: Export marts
         run: python -m warehouse.export
@@ -136,7 +139,7 @@ jobs:
 
       - name: Upload marts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: marts
           path: |
@@ -152,9 +155,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -163,7 +166,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
       - name: Start Kafka
         # The repository's own compose file, not a CI-specific one. Testing a

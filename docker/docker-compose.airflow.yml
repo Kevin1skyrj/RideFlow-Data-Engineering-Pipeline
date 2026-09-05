@@ -6,7 +6,7 @@
 # lives in Postgres and the warehouse is rebuildable.
 #
 #   docker compose -f docker/docker-compose.airflow.yml up -d --build
-#   http://localhost:8080     (admin / admin)
+#   http://localhost:8080     (admin / generated password; retrieval below)
 #
 # Run alongside Kafka:
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.airflow.yml up -d
@@ -23,6 +23,13 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+
+    # Airflow 3 uses SimpleAuthManager by default. It generates the password
+    # for this configured admin user and stores it in the shared persistent
+    # logs volume,
+    # so recreating only the API server does not unexpectedly change the login.
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/logs/simple_auth_manager_passwords.json.generated
 
     # ── Shared secrets. Every service MUST use the same values ──────────────
     # Airflow 3 task runners authenticate to the Task Execution API with a JWT.
@@ -109,7 +116,8 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # One-shot: migrate the metadata schema and create the admin user.
+  # One-shot: migrate the metadata schema. SimpleAuthManager creates the
+  # configured admin login when the API server starts.
   # Exit code 0 is success; the container is expected to stop.
   airflow-init:
     <<: *airflow-common
@@ -119,10 +127,6 @@ services:
       - -c
       - |
         airflow db migrate
-        airflow users create \
-          --username admin --password admin \
-          --firstname Rajat --lastname Pandey \
-          --role Admin --email admin@rideflow.local || true
         echo "airflow init complete"
     restart: "no"
 
@@ -168,6 +172,27 @@ services:
     <<: *airflow-common
     container_name: rideflow-airflow-dag-processor
     command: dag-processor
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Required for deferrable operators and for a fully healthy Airflow control
+  # plane. RideFlow's current DAG does not defer tasks, but omitting this
+  # service leaves the UI health indicator red and makes future deferrable
+  # operators wait forever.
+  airflow-triggerer:
+    <<: *airflow-common
+    container_name: rideflow-airflow-triggerer
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type TriggererJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 20s
+      retries: 6
+      start_period: 60s
     depends_on:
       airflow-postgres:
         condition: service_healthy

@@ -1,8 +1,8 @@
 # RideFlow — Power BI dashboard
 
-**Everything except the `.pbix` is built and verified. The report itself has to be assembled in Power BI Desktop, which is a Windows GUI application.**
+**The five-page `.pbix` is built and its 30 measures have been verified against the warehouse. This guide remains the reproducible specification for rebuilding or auditing the binary report.**
 
-That is a real limitation, not an oversight: `.pbix` is a proprietary binary that cannot be generated from a script. What *is* automated is everything it depends on — the marts, the measure definitions, the freshness contract, and a compatibility check proving the files load.
+`.pbix` is a proprietary binary that cannot be meaningfully diffed or tested in CI. Everything it depends on remains reviewable and automated: marts, measure definitions, freshness contract, metric SQL, and compatibility checks.
 
 ---
 
@@ -15,7 +15,7 @@ That is a real limitation, not an oversight: `.pbix` is a proprietary binary tha
 | DAX measures + dbt equivalents | ✅ [`measures.md`](measures.md) |
 | Freshness contract | ✅ `_FRESHNESS.json`, with `FUTURE_DATED` handling |
 | Compatibility check | ✅ No nested types in any export |
-| **`RideFlow.pbix`** | ⬜ **Yours to build** — steps below |
+| **`RideFlow.pbix`** | ✅ Five pages, 30 measures, verified against warehouse totals |
 
 ---
 

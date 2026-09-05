@@ -2,7 +2,7 @@
 name = "rideflow"
 version = "0.1.0"
 description = "Real-time ride-hailing data platform: Kafka -> Parquet lakehouse -> dbt -> DuckDB -> Power BI"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -17,7 +17,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
@@ -34,7 +34,7 @@ ignore = [
 
 [tool.black]
 line-length = 100
-target-version = ["py311"]
+target-version = ["py312"]
 
 [tool.coverage.run]
 source = ["event_generator"]
