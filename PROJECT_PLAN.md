@@ -5,9 +5,9 @@
 | Field | Value |
 |---|---|
 | Document owner | Rajat Pandey |
-| Status | Draft — pending implementation |
-| Last updated | 2026-08-05 |
-| Document type | Design specification |
+| Status | Complete — portfolio scope M0–M10 verified |
+| Last updated | 2026-09-05 |
+| Document type | Implemented design and verification record |
 
 ---
 
@@ -556,6 +556,13 @@ Metric definitions; Parquet mart export; Power BI report covering marketplace he
 Chaos scenarios (consumer kill, broker restart, duplicate replay, malformed flood); performance validation against §6.2; architecture decision records; runbook; data dictionary; setup verified from a clean clone.
 **Exit:** every §6.1 reliability guarantee is demonstrated by a repeatable test, and the platform starts from one command on a machine that has never run it.
 
+**Status:** ✅ Complete for the portfolio scope. GitHub Actions independently
+validates lint/unit tests on Python 3.12 and 3.13, builds the warehouse from a
+clean checkout, and starts the checked-in Kafka Compose stack for a real
+produce/consume/reconciliation test. Local Airflow evidence verifies all nine
+DAG tasks and required services. Production alert transport, cloud deployment,
+and distributed scaling remain explicitly deferred enhancements.
+
 **Dependency note:** M1 gates everything. M2–M4 form the ingestion path; M5–M7 the transformation path; M5 cannot begin until M4 is landing real data.
 
 ---
@@ -643,11 +650,11 @@ Most portfolio projects prove that someone can make a pipeline run once. This on
 
 | # | Decision | Status |
 |---|---|---|
-| A1 | Kafka deployment mode (KRaft vs. ZooKeeper) | Open — KRaft preferred; fewer moving parts |
-| A2 | Event serialisation (JSON vs. Avro) | Open — JSON for v1 simplicity; Avro when a registry is introduced |
-| A3 | Geographic zone granularity and count | Open — pending M1 |
-| A4 | Consumer batch size and flush interval | Open — to be tuned empirically in M4 |
-| A5 | Lookback window width for late arrivals | Open — must exceed maximum simulated lateness |
+| A1 | Kafka deployment mode (KRaft vs. ZooKeeper) | ✅ **RESOLVED.** KRaft using `apache/kafka:4.3.1`; fewer services and ZooKeeper is unnecessary. |
+| A2 | Event serialisation (JSON vs. Avro) | ✅ **RESOLVED for v1.** Versioned JSON Schema; Avro/Protobuf plus a registry is deferred until multiple producers justify it. |
+| A3 | Geographic zone granularity and count | ✅ **RESOLVED.** 27 Bengaluru analytical zones, with other city reference rows retained for extensibility. |
+| A4 | Consumer batch size and flush interval | ✅ **RESOLVED.** Configurable size threshold plus a 60-second maximum batch age; measured throughput exceeds the v1 target. |
+| A5 | Lookback window width for late arrivals | ✅ **RESOLVED.** 48-hour incremental lookback, while events beyond the separate seven-day validity bound are rejected. |
 | A6 | dbt-core / dbt-duckdb versions under Python 3.13 | ✅ **RESOLVED 2026-08-06.** Verified by combined `pip install --dry-run` on Python 3.13.5: dbt-core 1.12.0, dbt-duckdb 1.10.1, duckdb 1.5.5 resolve cleanly with native cp313 wheels. No 3.11/3.12 fallback needed. Pinned in `requirements.txt`. |
 
 ## Appendix B — Risk Register

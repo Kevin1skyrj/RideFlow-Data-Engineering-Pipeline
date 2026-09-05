@@ -2,7 +2,7 @@
 
 **A real-time ride-hailing data platform — Kafka → Parquet lakehouse → dbt → DuckDB → Power BI, orchestrated by Airflow.**
 
-![Status](https://img.shields.io/badge/status-M0--M9%20complete%20%C2%B7%20M10%20in%20progress-brightgreen)
+![Status](https://img.shields.io/badge/status-M0--M10%20complete-brightgreen)
 ![Tests](https://img.shields.io/badge/tests-243%20passing-brightgreen)
 ![dbt](https://img.shields.io/badge/dbt-21%20models%20%C2%B7%20135%20tests-orange)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
@@ -32,7 +32,7 @@ The pipeline runs end to end. These figures come from a full simulated day pushe
 | Airflow orchestration | ✅ 9-task DAG, containerised, backfill via `dag_run.conf` |
 | Exported marts | ✅ 19 Parquet files + freshness marker |
 | Power BI report | ✅ Five pages, 30 measures, verified against the warehouse |
-| Hardening, ADRs, runbook | 🟡 M10 in progress — CI, chaos tests, runbooks, and design docs exist; clean-machine proof remains |
+| Hardening, ADRs, runbook | ✅ M10 complete — green CI, clean-checkout warehouse build, chaos tests, runbooks, and design docs |
 
 Full breakdown: [Implementation Status](#8-implementation-status).
 
@@ -239,9 +239,17 @@ The exact skip count depends on which services are running. With Kafka stopped a
 
 ### Data provenance
 
-**All RideFlow events are synthetic.** The generator's demand curves, distance distributions, and fare structures are **calibrated against NYC TLC public trip records** (real Uber/Lyft trips); cancellations, driver sessions, and anomalies are modelled from business rules, because no public dataset contains labelled bad data.
+**All RideFlow events are synthetic.** The generator's demand curves, distance
+distributions, and fare structures are currently **hand-tuned**. The project
+documents a reproducible NYC TLC calibration method, but that calibration has
+not yet been executed; cancellations, driver sessions, and anomalies are
+modelled from explicit business rules because no public dataset contains the
+labelled failure cases this pipeline needs.
 
-**Honest limit:** calibration covers the car-based tiers only. `AUTO` and `BIKE` are hand-tuned — New York has no equivalent, and in Bengaluru those carry a large share of real demand. Full detail and the parameter-labelling scheme: [`docs/data_strategy.md`](docs/data_strategy.md).
+**Honest limit:** the planned TLC calibration can cover only car-based tiers.
+`AUTO` and `BIKE` have no New York equivalent and would still require a
+Bengaluru-specific source or clearly labelled hand-tuning. Full detail and the
+parameter-labelling scheme: [`docs/data_strategy.md`](docs/data_strategy.md).
 
 ### Sample data
 
@@ -267,7 +275,7 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M7 | Data quality | ✅ **Complete** — gate proven by chaos injection |
 | M8 | Orchestration | ✅ **Complete** — Airflow 3.3 DAG, backfill proven |
 | M9 | Analytics & dashboard | ✅ **Complete** — five-page `.pbix`, 30 measures, static dashboard, and metric SQL |
-| M10 | Hardening & documentation | 🟡 **In progress** — CI, chaos tests, runbooks, core design docs, and Airflow evidence complete; clean-machine proof remains |
+| M10 | Hardening & documentation | ✅ **Complete** — CI validates Python 3.12/3.13, a clean-checkout warehouse build, and the real Kafka Compose path |
 
 ### Known Constraints
 
@@ -282,7 +290,7 @@ Open items, stated rather than hidden:
 ### Verified
 
 - **243 pytest tests pass, 1 intentional sample-data test skips** with Kafka running and staging rebuilt with a host-absolute path; `ruff` and `black` are clean.
-- **`dbt build` completes 167 resources** — 21 models, 11 seeds, and 135 data tests; the latest run recorded 165 passes, 2 quality warnings, and 0 errors.
+- **`dbt build` completes 167 resources** — 21 models, 11 seeds, and 135 data tests; the clean-checkout CI fixture records 166 passes, 1 intentional quality warning, and 0 errors.
 - **`pip install -r requirements.txt` resolves cleanly** on Python 3.13.5 (84 packages, no conflicts).
 - **Generator output validates against the contract** — every event checked against the JSON Schemas parsed out of `event_contract.md` itself.
 - **Zero loss under SIGKILL** — consumer killed mid-batch, restarted, reconciled exactly.

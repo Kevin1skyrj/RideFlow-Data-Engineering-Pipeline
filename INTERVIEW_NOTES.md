@@ -4,15 +4,19 @@
 
 | Field | Value |
 |---|---|
-| Version | `1.0.0` |
+| Version | `2.0.0` |
 | Questions | **186** |
-| Last updated | 2026-08-06 |
+| Last updated | 2026-09-05 |
 
 ---
 
 ## 0. How to use this file
 
 Every question here traces to a real decision in RideFlow, so every answer can be grounded in something you built rather than something you read.
+
+Start with [`interview-notes/README.md`](interview-notes/README.md). That folder
+is a beginner-to-interview-ready curriculum with one file per concept. Use this
+file afterward as the exhaustive follow-up question bank.
 
 ### The three-layer answer
 
