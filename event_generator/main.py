@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sink",
-        choices=["file", "partitioned", "stdout", "kafka"],
+        choices=["file", "partitioned", "landing", "stdout", "kafka"],
         default="file",
         help="Where to send events (default: file)",
     )
@@ -122,6 +122,10 @@ def main(argv: list[str] | None = None) -> int:
             written = PartitionedJsonlSink(
                 DEFAULT_OUTPUT_DIR.parent / "generated" / "partitioned"
             ).write(result.events)
+        elif target == "landing":
+            from ingestion.direct_landing_sink import DirectLandingSink
+
+            written = DirectLandingSink(args.out).write(result.events)
         elif target == "kafka":
             from event_generator.kafka_sink import (
                 KafkaSink,

@@ -86,16 +86,23 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Create runtime directories
+        # data/ is intentionally gitignored, but DuckDB cannot create its
+        # database when the parent directory does not exist on a fresh runner.
+        run: mkdir -p data/warehouse data/processed
+
       - name: Generate a bounded window into the landing zone
-        # --sink partitioned writes Parquet directly, bypassing Kafka. The
-        # streaming path is proven separately; conflating them here would mean a
-        # broker hiccup reported itself as a broken warehouse.
+        # The direct landing sink uses the production serializer, validator and
+        # Parquet writer while bypassing Kafka. The streaming path is proven
+        # separately; conflating them here would make a broker hiccup look like
+        # a broken warehouse.
         #
         # Fixed seed: a CI failure must be reproducible locally with the same
         # command, otherwise the run is a coin toss rather than a test.
         run: |
           python -m event_generator.main \
-            --sink partitioned \
+            --sink landing \
+            --out data/raw \
             --duration 3600 \
             --trips-per-hour 600 \
             --seed 42
