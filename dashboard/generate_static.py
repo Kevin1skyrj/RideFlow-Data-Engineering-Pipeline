@@ -279,10 +279,15 @@ th{color:var(--ink-2);font-weight:600}
 footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--border);
   color:var(--muted);font-size:.82rem}
 .empty{color:var(--muted);font-size:.85rem}
-.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0}
-.button{display:inline-block;padding:10px 15px;border-radius:8px;background:var(--accent);
-  color:#fff;text-decoration:none;font-weight:700}
-.button:hover{filter:brightness(1.08)}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:18px 0 24px}
+.button{display:inline-flex;align-items:center;gap:8px;padding:11px 17px;border:2px solid var(--s1);
+  border-radius:9px;background:var(--s1);color:#fff;text-decoration:none;font-weight:750;
+  box-shadow:0 4px 12px rgba(42,120,214,.28);transition:transform .15s,filter .15s}
+.button::before{content:"\25B6";font-size:.78em}
+.button:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.button:focus-visible{outline:3px solid var(--warning);outline-offset:3px}
+.secondary{display:inline-flex;padding:9px 13px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);text-decoration:none;font-weight:600}
 """
 
 
@@ -321,9 +326,9 @@ def render(d: dict) -> str:
         '<div class="actions">'
         f'<a class="button" href="{escape(POWER_BI_REPORT_URL, quote=True)}" '
         'target="_blank" rel="noopener noreferrer">Open interactive Power BI report</a>'
-        '<a href="https://github.com/Kevin1skyrj/RideFlow-Data-Engineering-Pipeline/'
+        '<a class="secondary" href="https://github.com/Kevin1skyrj/RideFlow-Data-Engineering-Pipeline/'
         'raw/refs/heads/main/docs/screenshots/RideFlow.pdf">View Power BI report as PDF</a>'
-        '<a href="https://github.com/Kevin1skyrj/RideFlow-Data-Engineering-Pipeline/'
+        '<a class="secondary" href="https://github.com/Kevin1skyrj/RideFlow-Data-Engineering-Pipeline/'
         'raw/refs/heads/main/dashboard/RideFlow.pbix">Download the PBIX</a></div>',
         f'<div class="banner {tone}"><strong>{escape(status)}</strong>'
         f"<span>{escape(explain)}"

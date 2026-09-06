@@ -8,6 +8,22 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Explore the project
+
+| Start here | What you will see |
+|---|---|
+| **[Open interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D)** | Four interactive business-analysis pages |
+| **[Open the public analytics dashboard](https://rideflow.datadock.me/)** | Fast, CI-verifiable browser demo |
+| **[View the four-page PDF](docs/screenshots/RideFlow.pdf)** | Portable Power BI preview without an account |
+| **[Read the architecture](docs/architecture.md)** | Design decisions, constraints, and trade-offs |
+| **[Study the interview notes](interview-notes/README.md)** | Project explanation and concept-by-concept defence |
+
+> **Recruiter overview:** RideFlow simulates a ride-hailing marketplace, streams lifecycle events through Kafka, stores immutable Parquet, builds tested dimensional marts with dbt and DuckDB, orchestrates the workflow with Airflow, and presents trusted metrics through Power BI.
+
+### Documentation map
+
+[Architecture](docs/architecture.md) · [ETL design](docs/etl_design.md) · [Data quality](docs/data_quality.md) · [Runbook](docs/runbook.md) · [Power BI guide](dashboard/README.md) · [Project plan](PROJECT_PLAN.md)
+
 ---
 
 ## What this actually produces
@@ -477,14 +493,7 @@ Compilation Error: backfill_start and backfill_end must be supplied together.
 | [`dashboard/README.md`](dashboard/README.md) — step-by-step build guide | ✅ |
 | **`RideFlow.pbix`** | ✅ **Complete** — four pages and 30 measures verified against warehouse totals |
 
-### Dashboard demos
-
-- **[Open the interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D)** — four navigable report pages in the browser.
-- **[View the exported Power BI report as PDF](docs/screenshots/RideFlow.pdf)** — portable four-page preview requiring no Power BI account.
-- **[Open the public static dashboard](https://rideflow.datadock.me/)** — fast, CI-verifiable portfolio fallback.
-- **[Download the Power BI source file](dashboard/RideFlow.pbix)** — open and edit with Power BI Desktop on Windows.
-
-The Power BI Service report is a publicly accessible published snapshot; it does not use a scheduled gateway refresh. Re-publish it after intentionally refreshing the local Parquet marts in Power BI Desktop.
+The [interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D) is a publicly accessible snapshot without a scheduled gateway refresh. Re-publish it after intentionally refreshing the local Parquet marts in Power BI Desktop. The editable source is [`dashboard/RideFlow.pbix`](dashboard/RideFlow.pbix).
 
 **Funnel, measured:**
 
