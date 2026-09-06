@@ -322,6 +322,8 @@ def render(d: dict) -> str:
         f'<a class="button" href="{escape(POWER_BI_REPORT_URL, quote=True)}" '
         'target="_blank" rel="noopener noreferrer">Open interactive Power BI report</a>'
         '<a href="https://github.com/Kevin1skyrj/RideFlow-Data-Engineering-Pipeline/'
+        'raw/refs/heads/main/docs/screenshots/RideFlow.pdf">View Power BI report as PDF</a>'
+        '<a href="https://github.com/Kevin1skyrj/RideFlow-Data-Engineering-Pipeline/'
         'raw/refs/heads/main/dashboard/RideFlow.pbix">Download the PBIX</a></div>',
         f'<div class="banner {tone}"><strong>{escape(status)}</strong>'
         f"<span>{escape(explain)}"

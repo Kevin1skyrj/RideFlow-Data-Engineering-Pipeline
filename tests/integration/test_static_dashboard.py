@@ -125,6 +125,7 @@ class TestHonestPresentation:
         """The portfolio page must lead reviewers to the interactive report."""
         assert "https://app.powerbi.com/view?r=" in html
         assert "Open interactive Power BI report" in html
+        assert "docs/screenshots/RideFlow.pdf" in html
 
     def test_dark_mode_is_defined_in_both_scopes(self, html):
         """A viewer's explicit theme choice and their OS setting are different

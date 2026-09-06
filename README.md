@@ -480,6 +480,7 @@ Compilation Error: backfill_start and backfill_end must be supplied together.
 ### Dashboard demos
 
 - **[Open the interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D)** — four navigable report pages in the browser.
+- **[View the exported Power BI report as PDF](docs/screenshots/RideFlow.pdf)** — portable four-page preview requiring no Power BI account.
 - **[Open the public static dashboard](https://rideflow.datadock.me/)** — fast, CI-verifiable portfolio fallback.
 - **[Download the Power BI source file](dashboard/RideFlow.pbix)** — open and edit with Power BI Desktop on Windows.
 

@@ -2,7 +2,7 @@
 
 **The four-page `.pbix` is built and its 30 measures have been verified against the warehouse. This guide remains the reproducible specification for rebuilding or auditing the binary report.**
 
-**[Open the interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D)** · [Download `RideFlow.pbix`](RideFlow.pbix) · [Open the static dashboard](https://rideflow.datadock.me/)
+**[Open the interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D)** · [View the exported PDF](../docs/screenshots/RideFlow.pdf) · [Download `RideFlow.pbix`](RideFlow.pbix) · [Open the static dashboard](https://rideflow.datadock.me/)
 
 `.pbix` is a proprietary binary that cannot be meaningfully diffed or tested in CI. Everything it depends on remains reviewable and automated: marts, measure definitions, freshness contract, metric SQL, and compatibility checks.
 
