@@ -1,6 +1,8 @@
 # RideFlow — Power BI dashboard
 
-**The five-page `.pbix` is built and its 30 measures have been verified against the warehouse. This guide remains the reproducible specification for rebuilding or auditing the binary report.**
+**The four-page `.pbix` is built and its 30 measures have been verified against the warehouse. This guide remains the reproducible specification for rebuilding or auditing the binary report.**
+
+**[Open the interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D)** · [Download `RideFlow.pbix`](RideFlow.pbix) · [Open the static dashboard](https://rideflow.datadock.me/)
 
 `.pbix` is a proprietary binary that cannot be meaningfully diffed or tested in CI. Everything it depends on remains reviewable and automated: marts, measure definitions, freshness contract, metric SQL, and compatibility checks.
 
@@ -15,7 +17,7 @@
 | DAX measures + dbt equivalents | ✅ [`measures.md`](measures.md) |
 | Freshness contract | ✅ `_FRESHNESS.json`, with `FUTURE_DATED` handling |
 | Compatibility check | ✅ No nested types in any export |
-| **`RideFlow.pbix`** | ✅ Five pages, 30 measures, verified against warehouse totals |
+| **`RideFlow.pbix`** | ✅ Four pages, 30 measures, verified against warehouse totals |
 
 ---
 
@@ -118,7 +120,7 @@ Current data reports **`FUTURE_DATED`**: the generated dataset extends ~8 hours 
 
 ## Step 6 — Pages
 
-Five pages, mapped to the four business questions plus pipeline health — layout and visuals in [`measures.md`](measures.md) §6.
+Four pages, mapped to the four business questions. Freshness and quality indicators are integrated into the report rather than separated into a fifth page — layout and visuals are in [`measures.md`](measures.md) §6.
 
 ## Step 7 — Save
 

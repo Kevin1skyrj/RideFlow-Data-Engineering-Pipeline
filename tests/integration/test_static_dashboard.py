@@ -117,9 +117,14 @@ class TestHonestPresentation:
             offenders = [
                 m
                 for m in re.findall(rf"[^\s\"']*{re.escape(pattern)}[^\s\"'>]*", html)
-                if "github.com" not in m
+                if "github.com" not in m and "app.powerbi.com/view" not in m
             ]
             assert not offenders, f"external reference found: {offenders[:3]}"
+
+    def test_interactive_power_bi_report_is_linked(self, html):
+        """The portfolio page must lead reviewers to the interactive report."""
+        assert "https://app.powerbi.com/view?r=" in html
+        assert "Open interactive Power BI report" in html
 
     def test_dark_mode_is_defined_in_both_scopes(self, html):
         """A viewer's explicit theme choice and their OS setting are different

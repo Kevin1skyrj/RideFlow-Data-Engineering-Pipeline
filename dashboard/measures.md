@@ -162,9 +162,7 @@ If ingestion stalls, the export still succeeds every hour. An indicator based on
 | **Conversion Funnel** | Where do riders drop out? | Funnel visual by `funnel_stage_reached`, cancellation reasons by `reason_category`, drop-off by stage |
 | **Pricing** | Is surge working? | `Weighted Surge %` by hour, surge vs `avg_match_sec` scatter, surge by weather |
 | **Financial** | Reconciled revenue | Waterfall: gross → tax → payout → commission → gateway → net; charged vs collected |
-| **Pipeline Health** | Is the data trustworthy? | `fct_pipeline_quality` trends, quarantine count, DLQ-driven `unexplained_revenue` |
-
-**Every page carries the freshness indicator.** A dashboard that cannot tell you how old its numbers are should not be trusted with a decision.
+**Data trust is cross-cutting, not a separate fifth page.** Every page carries the freshness indicator, while the underlying quarantine and reconciliation controls remain enforced in dbt and CI. A dashboard that cannot tell you how old its numbers are should not be trusted with a decision.
 
 ---
 

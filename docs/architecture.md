@@ -490,7 +490,7 @@ Honest sequencing matters more than a general claim of scalability.
 
 - **Single region, single tenant.** No multi-region replication or tenant isolation.
 - **Minutes, not milliseconds.** This is an analytical platform. Nothing serves operational dispatch decisions.
-- **Power BI Desktop, not Power BI Service.** No scheduled cloud refresh or shared workspace.
+- **Power BI Service hosts a public snapshot, not a live serving layer.** The report is published for portfolio viewing, but there is no scheduled gateway refresh or shared production workspace; a new data snapshot must be refreshed in Desktop and re-published deliberately.
 - **Single-node compute.** Deliberate, with item 4 above as the documented exit.
 
 ### 12.4 The scaling answer worth giving in an interview

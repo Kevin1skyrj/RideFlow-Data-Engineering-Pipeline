@@ -13,7 +13,7 @@ dbt/DuckDB → exported marts → Power BI, orchestrated by Airflow and gated by
 - 48-hour normal incremental lookback
 - 21 dbt models + 11 seeds + 135 tests = 167 resources
 - 9 Airflow tasks
-- 5 Power BI pages, 30 measures
+- 4 Power BI pages, 30 measures
 - 90,186 full-data landed events
 - 16,415 trips; 212 quarantined; 16,203 clean
 - 13,897 completed; 85.77% completion

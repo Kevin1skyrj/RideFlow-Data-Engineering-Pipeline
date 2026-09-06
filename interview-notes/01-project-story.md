@@ -59,7 +59,7 @@ customer-facing application.
 | Platform commission | ₹1,511,749.30 |
 | dbt project | 21 models, 11 seeds, 135 tests |
 | Airflow DAG | 9 tasks |
-| Power BI | 5 pages, 30 measures |
+| Power BI | 4 pages, 30 measures |
 | Recorded ingestion rate | 4,368 events/second |
 
 ## 30-second interview answer

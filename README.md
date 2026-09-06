@@ -31,7 +31,7 @@ The pipeline runs end to end. These figures come from a full simulated day pushe
 | Landing zone → dbt → DuckDB | ✅ 21 models, medallion layering, idempotent incrementals |
 | Airflow orchestration | ✅ 9-task DAG, containerised, backfill via `dag_run.conf` |
 | Exported marts | ✅ 19 Parquet files + freshness marker |
-| Power BI report | ✅ Five pages, 30 measures, verified against the warehouse |
+| Power BI report | ✅ Four pages, 30 measures, verified against the warehouse |
 | Hardening, ADRs, runbook | ✅ M10 complete — green CI, clean-checkout warehouse build, chaos tests, runbooks, and design docs |
 
 Full breakdown: [Implementation Status](#8-implementation-status).
@@ -274,7 +274,7 @@ Edge cases included: cancelled ride (rider and driver), late driver (+9.7 min pa
 | M6 | Dimensional model | ✅ **Complete** — 19 models, idempotency proven |
 | M7 | Data quality | ✅ **Complete** — gate proven by chaos injection |
 | M8 | Orchestration | ✅ **Complete** — Airflow 3.3 DAG, backfill proven |
-| M9 | Analytics & dashboard | ✅ **Complete** — five-page `.pbix`, 30 measures, static dashboard, and metric SQL |
+| M9 | Analytics & dashboard | ✅ **Complete** — four-page `.pbix`, 30 measures, static dashboard, and metric SQL |
 | M10 | Hardening & documentation | ✅ **Complete** — CI validates Python 3.12/3.13, a clean-checkout warehouse build, and the real Kafka Compose path |
 
 ### Known Constraints
@@ -475,7 +475,15 @@ Compilation Error: backfill_start and backfill_end must be supplied together.
 | [`dashboard/measures.md`](dashboard/measures.md) — every DAX measure + its dbt equivalent | ✅ |
 | Freshness contract (`_FRESHNESS.json`) | ✅ |
 | [`dashboard/README.md`](dashboard/README.md) — step-by-step build guide | ✅ |
-| **`RideFlow.pbix`** | ✅ **Complete** — five pages and 30 measures verified against warehouse totals |
+| **`RideFlow.pbix`** | ✅ **Complete** — four pages and 30 measures verified against warehouse totals |
+
+### Dashboard demos
+
+- **[Open the interactive Power BI report](https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEtZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1OWUyNyIsImMiOjEwfQ%3D%3D)** — four navigable report pages in the browser.
+- **[Open the public static dashboard](https://rideflow.datadock.me/)** — fast, CI-verifiable portfolio fallback.
+- **[Download the Power BI source file](dashboard/RideFlow.pbix)** — open and edit with Power BI Desktop on Windows.
+
+The Power BI Service report is a publicly accessible published snapshot; it does not use a scheduled gateway refresh. Re-publish it after intentionally refreshing the local Parquet marts in Power BI Desktop.
 
 **Funnel, measured:**
 

@@ -4,8 +4,8 @@
 
 ── Why this exists alongside the Power BI report ───────────────────────────
 `.pbix` is a proprietary binary: it cannot be diffed, reviewed, or tested, and
-opening it needs Windows plus Power BI Desktop. architecture.md 0 accepts that
-cost deliberately for the interactive report.
+editing it needs Windows plus Power BI Desktop. A published Power BI Service
+snapshot gives reviewers an interactive, browser-based version.
 
 This page is the inverse trade. It is produced by a script that IS diffable,
 from SQL already under test, and CI asserts that the numbers it publishes match
@@ -43,6 +43,11 @@ from warehouse.connection import ROOT
 EXPORT_DIR = ROOT / "data" / "processed"
 OUT_DIR = ROOT / "site"
 OUT_FILE = OUT_DIR / "index.html"
+POWER_BI_REPORT_URL = (
+    "https://app.powerbi.com/view?r=eyJrIjoiNzZjMmYwMmItNjU5NS00NGU1LTk3OGEt"
+    "ZTBlNjc4NGY0NzhjIiwidCI6ImJhZDEyODY0LTkxM2UtNGI5OS04N2Q2LWI4ZDJhZDQ1"
+    "OWUyNyIsImMiOjEwfQ%3D%3D"
+)
 
 # Status colours are reserved: never reused as a series colour, and always
 # shipped with a label rather than carrying meaning through hue alone.
@@ -274,6 +279,10 @@ th{color:var(--ink-2);font-weight:600}
 footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--border);
   color:var(--muted);font-size:.82rem}
 .empty{color:var(--muted);font-size:.85rem}
+.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0}
+.button{display:inline-block;padding:10px 15px;border-radius:8px;background:var(--accent);
+  color:#fff;text-decoration:none;font-weight:700}
+.button:hover{filter:brightness(1.08)}
 """
 
 
@@ -309,6 +318,11 @@ def render(d: dict) -> str:
         '<p class="sub">Ride-hailing marketplace analytics &mdash; Kafka &rarr; Parquet '
         "lakehouse &rarr; dbt &rarr; DuckDB. Every figure below is generated from the "
         "warehouse and verified in CI.</p>",
+        '<div class="actions">'
+        f'<a class="button" href="{escape(POWER_BI_REPORT_URL, quote=True)}" '
+        'target="_blank" rel="noopener noreferrer">Open interactive Power BI report</a>'
+        '<a href="https://github.com/Kevin1skyrj/RideFlow-Data-Engineering-Pipeline/'
+        'raw/refs/heads/main/dashboard/RideFlow.pbix">Download the PBIX</a></div>',
         f'<div class="banner {tone}"><strong>{escape(status)}</strong>'
         f"<span>{escape(explain)}"
         + (f" &middot; data age {age:+.1f}h" if isinstance(age, int | float) else "")
